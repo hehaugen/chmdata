@@ -10,32 +10,27 @@ import pandas as pd
 import requests
 
 # Specific heat of air [MJ kg-1 °C-1]
-CP = 1.013 * 10 ** -3
+CP = 1.013 * 10**-3
 # Stefan Boltzmann constant - hourly [MJm-2K-4h-1]
-STEFAN_BOLTZMANN_HOUR = 2.042 * 10 ** -10
+STEFAN_BOLTZMANN_HOUR = 2.042 * 10**-10
 # Stefan Boltzmann constant - daily [MJm-2K-4d-1]
-STEFAN_BOLTZMANN_DAY = 4.903 * 10 ** -9
+STEFAN_BOLTZMANN_DAY = 4.903 * 10**-9
 
 
 # Spatial Utilities
 # -------------------
 def elevation_from_coordinate(lat, lon):
-    """ Returns elevation in meters from USGS National Map services given decimal degree coordinates. """
-    params = {
-        'output': 'json',
-        'x': lon,
-        'y': lat,
-        'units': 'Meters'
-    }
+    """Returns elevation in meters from USGS National Map services given decimal degree coordinates."""
+    params = {"output": "json", "x": lon, "y": lat, "units": "Meters"}
 
-    url = r'https://epqs.nationalmap.gov/v1/json?'
+    url = r"https://epqs.nationalmap.gov/v1/json?"
     result = requests.get(url + urllib.parse.urlencode(params), timeout=20)
-    elev = float(result.json()['value'])
+    elev = float(result.json()["value"])
     return elev
 
 
 def great_circle_distance(here: Tuple[float, float], there: Tuple[float, float]) -> float:
-    """ Calculate great circle distance between 2 points in km.
+    """Calculate great circle distance between 2 points in km.
 
     reference: https://en.wikipedia.org/wiki/Great-circle_distance
 
@@ -51,7 +46,7 @@ def great_circle_distance(here: Tuple[float, float], there: Tuple[float, float])
     lon1 = radians(here[1])
     lat2 = radians(there[0])
     lon2 = radians(there[1])
-    central_angle = arccos(sin(lat1)*sin(lat2) + cos(lat1)*cos(lat2)*cos(abs(lon1-lon2)))
+    central_angle = arccos(sin(lat1) * sin(lat2) + cos(lat1) * cos(lat2) * cos(abs(lon1 - lon2)))
     d = r * central_angle
     return d
 
@@ -59,7 +54,7 @@ def great_circle_distance(here: Tuple[float, float], there: Tuple[float, float])
 # Combination PET methods
 # -----------------------
 def get_index_shape(df):
-    """ Method to return the index and shape of the input data. """
+    """Method to return the index and shape of the input data."""
     try:
         index = pd.DatetimeIndex(df.index)
     except AttributeError:
@@ -67,10 +62,29 @@ def get_index_shape(df):
     return index, df.shape
 
 
-def penman(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
-           rhmax=None, rhmin=None, rh=None, pressure=None, elevation=None,
-           lat=None, n=None, nn=None, rso=None, aw=2.6, bw=0.536, a=1.35,
-           b=-0.35, albedo=0.23):
+def penman(
+    tmean,
+    wind,
+    rs=None,
+    rn=None,
+    g=0,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    pressure=None,
+    elevation=None,
+    lat=None,
+    n=None,
+    nn=None,
+    rso=None,
+    aw=2.6,
+    bw=0.536,
+    a=1.35,
+    b=-0.35,
+    albedo=0.23,
+):
     """Evaporation calculated according to [penman_1948]_.
 
     Parameters
@@ -149,13 +163,11 @@ def penman(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     dlt = calc_vpc(tmean)
     lambd = calc_lambda(tmean)
 
-    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin,
-                 rh=rh)
+    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
     es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
 
     if rn is None:
-        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
-                    elevation, rso, a, b, ea, albedo)
+        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, ea, albedo)
 
     fu = aw * (1 + bw * wind)
 
@@ -165,11 +177,34 @@ def penman(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     return num1 + num2
 
 
-def pm_asce(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
-            rhmax=None, rhmin=None, rh=None, pressure=None, elevation=None,
-            lat=None, n=None, nn=None, rso=None, a=1.35, b=-0.35, cn=900,
-            cd=0.34, ea=None, albedo=0.23, kab=None, as1=0.25, bs1=0.5,
-            etype='os'):
+def pm_asce(
+    tmean,
+    wind,
+    rs=None,
+    rn=None,
+    g=0,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    pressure=None,
+    elevation=None,
+    lat=None,
+    n=None,
+    nn=None,
+    rso=None,
+    a=1.35,
+    b=-0.35,
+    cn=900,
+    cd=0.34,
+    ea=None,
+    albedo=0.23,
+    kab=None,
+    as1=0.25,
+    bs1=0.5,
+    etype="os",
+):
     """Evaporation calculated according to [monteith_1965]_.
 
     Parameters
@@ -262,14 +297,14 @@ def pm_asce(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     gamma = calc_psy(pressure)
     dlt = calc_vpc(tmean)
     if ea is None:
-        ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax,
-                     rhmin=rhmin, rh=rh)
+        ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
     es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
     if rn is None:
-        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
-                    elevation, rso, a, b, ea, albedo, as1, bs1, kab)
+        rn = get_rn(
+            tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, ea, albedo, as1, bs1, kab
+        )
 
-    if etype == 'rs':
+    if etype == "rs":
         cn = 1600
         cd = 0.38
 
@@ -279,11 +314,37 @@ def pm_asce(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     return num1 + num2
 
 
-def pm(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None, rhmax=None,
-       rhmin=None, rh=None, pressure=None, elevation=None, lat=None, n=None,
-       nn=None, rso=None, a=1.35, b=-0.35, lai=None, croph=None, r_l=100,
-       r_s=70, ra_method=1, a_sh=1, a_s=1, lai_eff=1, srs=0.0009, co2=300,
-       albedo=0.23):
+def pm(
+    tmean,
+    wind,
+    rs=None,
+    rn=None,
+    g=0,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    pressure=None,
+    elevation=None,
+    lat=None,
+    n=None,
+    nn=None,
+    rso=None,
+    a=1.35,
+    b=-0.35,
+    lai=None,
+    croph=None,
+    r_l=100,
+    r_s=70,
+    ra_method=1,
+    a_sh=1,
+    a_s=1,
+    lai_eff=1,
+    srs=0.0009,
+    co2=300,
+    albedo=0.23,
+):
     """Evaporation calculated according to [monteith_1965]_.
 
     Parameters
@@ -383,18 +444,15 @@ def pm(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None, rhmax=None,
     dlt = calc_vpc(tmean)
     lambd = calc_lambda(tmean)
 
-    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin,
-                 rh=rh)
+    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
     es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
 
     res_a = calc_res_aero(wind, ra_method=ra_method, croph=croph)
-    res_s = calc_res_surf(lai=lai, r_s=r_s, r_l=r_l, lai_eff=lai_eff, srs=srs,
-                          co2=co2)
+    res_s = calc_res_surf(lai=lai, r_s=r_s, r_l=r_l, lai_eff=lai_eff, srs=srs, co2=co2)
     gamma1 = gamma * a_sh / a_s * (1 + res_s / res_a)
 
     if rn is None:
-        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
-                    elevation, rso, a, b, ea, albedo)
+        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, ea, albedo)
 
     kmin = 86400  # unit conversion s d-1
     rho_a = calc_rho(pressure, tmean, ea)
@@ -405,10 +463,27 @@ def pm(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None, rhmax=None,
     return num1 + num2
 
 
-def pm_fao56(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
-             rhmax=None, rhmin=None, rh=None, pressure=None, elevation=None,
-             lat=None, n=None, nn=None, rso=None, a=1.35, b=-0.35,
-             albedo=0.23):
+def pm_fao56(
+    tmean,
+    wind,
+    rs=None,
+    rn=None,
+    g=0,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    pressure=None,
+    elevation=None,
+    lat=None,
+    n=None,
+    nn=None,
+    rso=None,
+    a=1.35,
+    b=-0.35,
+    albedo=0.23,
+):
     """Evaporation calculated according to [allen_1998]_.
 
     Parameters
@@ -475,13 +550,11 @@ def pm_fao56(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
 
     gamma1 = gamma * (1 + 0.34 * wind)
 
-    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin,
-                 rh=rh)
+    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
     es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
 
     if rn is None:
-        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
-                    elevation, rso, a, b, ea, albedo)
+        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, ea, albedo)
 
     den = dlt + gamma1
     num1 = (0.408 * dlt * (rn - g)) / den
@@ -489,10 +562,28 @@ def pm_fao56(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     return num1 + num2
 
 
-def priestley_taylor(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
-                     rhmax=None, rhmin=None, rh=None, pressure=None,
-                     elevation=None, lat=None, n=None, nn=None, rso=None,
-                     a=1.35, b=-0.35, alpha=1.26, albedo=0.23):
+def priestley_taylor(
+    tmean,
+    wind,
+    rs=None,
+    rn=None,
+    g=0,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    pressure=None,
+    elevation=None,
+    lat=None,
+    n=None,
+    nn=None,
+    rso=None,
+    a=1.35,
+    b=-0.35,
+    alpha=1.26,
+    albedo=0.23,
+):
     """Evaporation calculated according to [priestley_and_taylor_1965]_.
 
     Parameters
@@ -566,16 +657,32 @@ def priestley_taylor(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     lambd = calc_lambda(tmean)
 
     if rn is None:
-        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
-                    elevation, rso, a, b, albedo=albedo)
+        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, albedo=albedo)
 
     return (alpha * dlt * (rn - g)) / (lambd * (dlt + gamma))
 
 
-def kimberly_penman(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
-                    rhmax=None, rhmin=None, rh=None, pressure=None,
-                    elevation=None, lat=None, n=None, nn=None, rso=None,
-                    a=1.35, b=-0.35, albedo=0.23):
+def kimberly_penman(
+    tmean,
+    wind,
+    rs=None,
+    rn=None,
+    g=0,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    pressure=None,
+    elevation=None,
+    lat=None,
+    n=None,
+    nn=None,
+    rso=None,
+    a=1.35,
+    b=-0.35,
+    albedo=0.23,
+):
     """Evaporation calculated according to [wright_1982]_.
 
     Parameters
@@ -644,17 +751,14 @@ def kimberly_penman(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     dlt = calc_vpc(tmean)
     lambd = calc_lambda(tmean)
 
-    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin,
-                 rh=rh)
+    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
     es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
 
     if rn is None:
-        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
-                    elevation, rso, a, b, ea, albedo)
+        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, ea, albedo)
 
     j = day_of_year(tmean.index)
-    w = wind * (0.4 + 0.14 * exp(-((j - 173) / 58) ** 2) + (
-            0.605 + 0.345 * exp((j - 243) / 80) ** 2))
+    w = wind * (0.4 + 0.14 * exp(-(((j - 173) / 58) ** 2)) + (0.605 + 0.345 * exp((j - 243) / 80) ** 2))
 
     den = lambd * (dlt + gamma)
     num1 = dlt * (rn - g) / den
@@ -662,11 +766,37 @@ def kimberly_penman(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     return num1 + num2
 
 
-def thom_oliver(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
-                rhmax=None, rhmin=None, rh=None, pressure=None, elevation=None,
-                lat=None, n=None, nn=None, rso=None, aw=2.6, bw=0.536, a=1.35,
-                b=-0.35, lai=None, croph=None, r_l=100, r_s=70, ra_method=1,
-                lai_eff=1, srs=0.0009, co2=300, albedo=0.23):
+def thom_oliver(
+    tmean,
+    wind,
+    rs=None,
+    rn=None,
+    g=0,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    pressure=None,
+    elevation=None,
+    lat=None,
+    n=None,
+    nn=None,
+    rso=None,
+    aw=2.6,
+    bw=0.536,
+    a=1.35,
+    b=-0.35,
+    lai=None,
+    croph=None,
+    r_l=100,
+    r_s=70,
+    ra_method=1,
+    lai_eff=1,
+    srs=0.0009,
+    co2=300,
+    albedo=0.23,
+):
     """Evaporation calculated according to [thom_1977]_.
 
     Parameters
@@ -758,18 +888,15 @@ def thom_oliver(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     dlt = calc_vpc(tmean)
     lambd = calc_lambda(tmean)
 
-    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin,
-                 rh=rh)
+    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
     es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
 
     res_a = calc_res_aero(wind, ra_method=ra_method, croph=croph)
-    res_s = calc_res_surf(lai=lai, r_s=r_s, r_l=r_l, lai_eff=lai_eff, srs=srs,
-                          co2=co2)
+    res_s = calc_res_surf(lai=lai, r_s=r_s, r_l=r_l, lai_eff=lai_eff, srs=srs, co2=co2)
     gamma1 = gamma * (1 + res_s / res_a)
 
     if rn is None:
-        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
-                    elevation, rso, a, b, ea, albedo)
+        rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, ea, albedo)
 
     w = aw * (1 + bw * wind)
 
@@ -779,18 +906,50 @@ def thom_oliver(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     return num1 + num2
 
 
-def get_rn(tmean, rs=None, lat=None, n=None, nn=None, tmax=None, tmin=None,
-           rhmax=None, rhmin=None, rh=None, elevation=None, rso=None,
-           a=1.35, b=-0.35, ea=None, albedo=0.23, as1=0.25, bs1=0.5, kab=None):
-    """ Calculate net radiation. """
+def get_rn(
+    tmean,
+    rs=None,
+    lat=None,
+    n=None,
+    nn=None,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    elevation=None,
+    rso=None,
+    a=1.35,
+    b=-0.35,
+    ea=None,
+    albedo=0.23,
+    as1=0.25,
+    bs1=0.5,
+    kab=None,
+):
+    """Calculate net radiation."""
     tindex, shape = get_index_shape(tmean)
-    rns = calc_rad_short(rs=rs, tindex=tindex, lat=lat, n=n, nn=nn,
-                         shape=shape, albedo=albedo, as1=as1,
-                         bs1=bs1)  # [MJ/m2/d]
-    rnl = calc_rad_long(rs=rs, tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax,
-                        rhmin=rhmin, rh=rh, elevation=elevation, lat=lat,
-                        rso=rso, a=a, b=b, ea=ea, kab=kab, tindex=tindex,
-                        shape=shape)  # [MJ/m2/d]
+    rns = calc_rad_short(
+        rs=rs, tindex=tindex, lat=lat, n=n, nn=nn, shape=shape, albedo=albedo, as1=as1, bs1=bs1
+    )  # [MJ/m2/d]
+    rnl = calc_rad_long(
+        rs=rs,
+        tmean=tmean,
+        tmax=tmax,
+        tmin=tmin,
+        rhmax=rhmax,
+        rhmin=rhmin,
+        rh=rh,
+        elevation=elevation,
+        lat=lat,
+        rso=rso,
+        a=a,
+        b=b,
+        ea=ea,
+        kab=kab,
+        tindex=tindex,
+        shape=shape,
+    )  # [MJ/m2/d]
     rn = rns - rnl
     # rn = rns
     # # print("rns", rns)
@@ -873,7 +1032,7 @@ def calc_vpc(tmean):
 
 
 def calc_lambda(tmean):
-    """ Latent Heat of Vaporization [MJ kg-1].
+    """Latent Heat of Vaporization [MJ kg-1].
 
     Parameters
     ----------
@@ -950,7 +1109,7 @@ def calc_rho(pressure, tmean, ea):
 
 
 def calc_e0(tmean):
-    """ Saturation vapor pressure at the air temperature T [kPa].
+    """Saturation vapor pressure at the air temperature T [kPa].
 
     Parameters
     ----------
@@ -974,7 +1133,7 @@ def calc_e0(tmean):
 
 
 def calc_es(tmean=None, tmax=None, tmin=None):
-    """ Saturation vapor pressure [kPa].
+    """Saturation vapor pressure [kPa].
 
     Parameters
     ----------
@@ -1006,7 +1165,7 @@ def calc_es(tmean=None, tmax=None, tmin=None):
 
 
 def calc_ea(tmean=None, tmax=None, tmin=None, rhmax=None, rhmin=None, rh=None):
-    """ Actual vapor pressure [kPa].
+    """Actual vapor pressure [kPa].
 
     Parameters
     ----------
@@ -1059,7 +1218,7 @@ def day_of_year(tindex):
     array of with ints specifying day of year.
 
     """
-    return pd.to_numeric(tindex.strftime('%j'))
+    return pd.to_numeric(tindex.strftime("%j"))
 
 
 def daylight_hours(tindex, lat):
@@ -1138,7 +1297,7 @@ def solar_declination(j):
     -------
     Based on equations 24 in [allen_1998]_.
     """
-    return 0.409 * sin(2. * pi / 365. * j - 1.39)
+    return 0.409 * sin(2.0 * pi / 365.0 * j - 1.39)
 
 
 def relative_distance(j):
@@ -1156,7 +1315,7 @@ def relative_distance(j):
     -------
     Based on equations 23 in [allen_1998]_.
     """
-    return 1 + 0.033 * cos(2. * pi / 365. * j)
+    return 1 + 0.033 * cos(2.0 * pi / 365.0 * j)
 
 
 def extraterrestrial_r(tindex, lat, shape):
@@ -1186,8 +1345,7 @@ def extraterrestrial_r(tindex, lat, shape):
     xx = sin(sol_dec) * sin(lat)
     yy = cos(sol_dec) * cos(lat)
 
-    return broadcast_to(
-        118.08 / 3.141592654 * dr * (omega * xx + yy * sin(omega)), shape)
+    return broadcast_to(118.08 / 3.141592654 * dr * (omega * xx + yy * sin(omega)), shape)
 
 
 def calc_res_surf(lai=None, r_s=70, r_l=100, lai_eff=0, srs=None, co2=None):
@@ -1291,16 +1449,29 @@ def calc_res_aero(wind, croph=None, zw=2, zh=2, ra_method=1):
         d = 0.667 * croph
         zom = 0.123 * croph
         zoh = 0.0123 * croph
-        return (log((zw - d) / zom)) * (log((zh - d) / zoh) /
-                                        (0.41 ** 2) / wind)
+        return (log((zw - d) / zom)) * (log((zh - d) / zoh) / (0.41**2) / wind)
 
 
 # Radiation utility functions (originally from rad_utils.py)
 # ----------------------------------------------------------
-def calc_rad_long(rs, tindex=None, shape=None, tmean=None, tmax=None,
-                  tmin=None,
-                  rhmax=None, rhmin=None, rh=None, elevation=None, lat=None,
-                  rso=None, a=1.35, b=-0.35, ea=None, kab=None):
+def calc_rad_long(
+    rs,
+    tindex=None,
+    shape=None,
+    tmean=None,
+    tmax=None,
+    tmin=None,
+    rhmax=None,
+    rhmin=None,
+    rh=None,
+    elevation=None,
+    lat=None,
+    rso=None,
+    a=1.35,
+    b=-0.35,
+    ea=None,
+    kab=None,
+):
     """Net longwave radiation [MJ m-2 d-1].
 
     Parameters
@@ -1352,16 +1523,14 @@ def calc_rad_long(rs, tindex=None, shape=None, tmean=None, tmax=None,
     ----------
     """
     if ea is None:
-        ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax,
-                     rhmin=rhmin, rh=rh)
+        ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
 
     if rso is None:
         ra = extraterrestrial_r(tindex, lat, shape)
         rso = calc_rso(ra=ra, elevation=elevation, kab=kab)
     solar_rat = clip(rs / rso, 0.3, 1)
     if tmax is not None:
-        tmp1 = STEFAN_BOLTZMANN_DAY * ((tmax + 273.16) ** 4 +
-                                       (tmin + 273.16) ** 4) / 2
+        tmp1 = STEFAN_BOLTZMANN_DAY * ((tmax + 273.16) ** 4 + (tmin + 273.16) ** 4) / 2
     else:
         tmp1 = STEFAN_BOLTZMANN_DAY * (tmean + 273.16) ** 4
 
@@ -1371,8 +1540,7 @@ def calc_rad_long(rs, tindex=None, shape=None, tmean=None, tmax=None,
     return tmp1 * tmp2 * tmp3
 
 
-def calc_rad_short(rs=None, tindex=None, lat=None, shape=None, albedo=0.23,
-                   n=None, nn=None, as1=0.25, bs1=0.5):
+def calc_rad_short(rs=None, tindex=None, lat=None, shape=None, albedo=0.23, n=None, nn=None, as1=0.25, bs1=0.5):
     """Net shortwave radiation [MJ m-2 d-1].
 
     Parameters
@@ -1407,8 +1575,7 @@ def calc_rad_short(rs=None, tindex=None, lat=None, shape=None, albedo=0.23,
     if rs is not None:
         return (1 - albedo) * rs
     else:
-        return (1 - albedo) * calc_rad_sol_in(tindex, lat, shape, n, as1=as1,
-                                              bs1=bs1, nn=nn)
+        return (1 - albedo) * calc_rad_sol_in(tindex, lat, shape, n, as1=as1, bs1=bs1, nn=nn)
 
 
 def calc_rad_sol_in(tindex, lat, shape, n, as1=0.25, bs1=0.5, nn=None):
@@ -1470,6 +1637,6 @@ def calc_rso(ra, elevation, kab=None):
 
     """
     if kab is None:
-        return (0.75 + (2 * 10 ** -5) * elevation) * ra
+        return (0.75 + (2 * 10**-5) * elevation) * ra
     else:
         return kab * ra
