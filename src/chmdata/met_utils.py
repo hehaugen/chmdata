@@ -1,8 +1,13 @@
 """ This module was adapted from https://github.com/phydrus/pyet """
+# Only great_circle_distance is used right now.
 # I don't think any of these functions are used in the other modules yet, but they seemed useful.
 
+from typing import Tuple
+import urllib
+
+from numpy import tan, cos, pi, sin, arccos, mod, exp, log, broadcast_to, sqrt, clip, radians
 import pandas as pd
-from numpy import tan, cos, pi, sin, arccos, mod, exp, log, broadcast_to, sqrt, clip
+import requests
 
 # Specific heat of air [MJ kg-1 °C-1]
 CP = 1.013 * 10 ** -3
@@ -12,12 +17,49 @@ STEFAN_BOLTZMANN_HOUR = 2.042 * 10 ** -10
 STEFAN_BOLTZMANN_DAY = 4.903 * 10 ** -9
 
 
+# Spatial Utilities
+# -------------------
+def elevation_from_coordinate(lat, lon):
+    """ Returns elevation in meters from USGS National Map services given decimal degree coordinates. """
+    params = {
+        'output': 'json',
+        'x': lon,
+        'y': lat,
+        'units': 'Meters'
+    }
+
+    url = r'https://epqs.nationalmap.gov/v1/json?'
+    result = requests.get(url + urllib.parse.urlencode(params), timeout=20)
+    elev = float(result.json()['value'])
+    return elev
+
+
+def great_circle_distance(here: Tuple[float, float], there: Tuple[float, float]) -> float:
+    """ Calculate great circle distance between 2 points in km.
+
+    reference: https://en.wikipedia.org/wiki/Great-circle_distance
+
+    parameters:
+        here: 1st point, (lat, lon), decimal degrees
+        there: 2nd point, (lat, lon), decimal degrees
+
+    returns:
+        d: distance in km
+    """
+    r = 6371.0  # km
+    lat1 = radians(here[0])
+    lon1 = radians(here[1])
+    lat2 = radians(there[0])
+    lon2 = radians(there[1])
+    central_angle = arccos(sin(lat1)*sin(lat2) + cos(lat1)*cos(lat2)*cos(abs(lon1-lon2)))
+    d = r * central_angle
+    return d
+
+
 # Combination PET methods
 # -----------------------
 def get_index_shape(df):
-    """Method to return the index and shape of the input data.
-
-    """
+    """ Method to return the index and shape of the input data. """
     try:
         index = pd.DatetimeIndex(df.index)
     except AttributeError:
@@ -127,7 +169,7 @@ def pm_asce(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
             rhmax=None, rhmin=None, rh=None, pressure=None, elevation=None,
             lat=None, n=None, nn=None, rso=None, a=1.35, b=-0.35, cn=900,
             cd=0.34, ea=None, albedo=0.23, kab=None, as1=0.25, bs1=0.5,
-            etype="os"):
+            etype='os'):
     """Evaporation calculated according to [monteith_1965]_.
 
     Parameters
@@ -227,7 +269,7 @@ def pm_asce(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
         rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh,
                     elevation, rso, a, b, ea, albedo, as1, bs1, kab)
 
-    if etype == "rs":
+    if etype == 'rs':
         cn = 1600
         cd = 0.38
 
@@ -431,7 +473,7 @@ def pm_fao56(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     gamma = calc_psy(pressure)
     dlt = calc_vpc(tmean)
 
-    gamma1 = (gamma * (1 + 0.34 * wind))
+    gamma1 = gamma * (1 + 0.34 * wind)
 
     ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin,
                  rh=rh)
@@ -740,6 +782,7 @@ def thom_oliver(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
 def get_rn(tmean, rs=None, lat=None, n=None, nn=None, tmax=None, tmin=None,
            rhmax=None, rhmin=None, rh=None, elevation=None, rso=None,
            a=1.35, b=-0.35, ea=None, albedo=0.23, as1=0.25, bs1=0.5, kab=None):
+    """ Calculate net radiation. """
     tindex, shape = get_index_shape(tmean)
     rns = calc_rad_short(rs=rs, tindex=tindex, lat=lat, n=n, nn=nn,
                          shape=shape, albedo=albedo, as1=as1,
@@ -1186,7 +1229,7 @@ def calc_res_surf(lai=None, r_s=70, r_l=100, lai_eff=0, srs=None, co2=None):
     if lai is None:
         return r_s
     else:
-        fco2 = (1 + srs * (co2 - 300))
+        fco2 = 1 + srs * (co2 - 300)
         return fco2 * r_l / calc_laieff(lai=lai, lai_eff=lai_eff)
 
 

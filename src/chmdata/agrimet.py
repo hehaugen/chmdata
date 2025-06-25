@@ -1,3 +1,5 @@
+""" Functions to retrieve Agrimet-related data from US Bureau of Reclamation regional websites. """
+
 # =============================================================================================
 # Copyright 2017 dgketchum
 #
@@ -13,23 +15,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================================
-from __future__ import print_function, absolute_import
+# from __future__ import print_function, absolute_import
 
+import copy
+import datetime as dt
 import json
-from pprint import pprint
-from copy import deepcopy
+import pprint
 
+from fiona import collection
+from fiona.crs import from_epsg
+import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 from requests.compat import urlencode, OrderedDict
-from datetime import datetime
-from fiona import collection
-from fiona.crs import from_epsg
-from geopy.distance import geodesic
-from pandas import read_table, to_datetime, date_range, to_numeric, DataFrame
 
-import matplotlib.pyplot as plt
-import datetime as dt
+from src.chmdata import met_utils
+# import met_utils  # doesn't work
 
 STATION_INFO_URL = 'https://www.usbr.gov/pn/agrimet/agrimetmap/usbr_map.json'  # Still missing many install dates
 # AGRIMET_MET_REQ_SCRIPT_PN = 'https://www.usbr.gov/pn-bin/agrimet.pl' ## appears to be broken
@@ -37,7 +38,6 @@ AGRIMET_MET_REQ_SCRIPT_PN = 'https://www.usbr.gov/pn-bin/agrimet.pl'
 AGRIMET_CROP_REQ_SCRIPT_PN = 'https://www.usbr.gov/pn/agrimet/chart/{}{}et.txt'
 AGRIMET_MET_REQ_SCRIPT_GP = 'https://www.usbr.gov/gp-bin/agrimet_archives.pl'
 AGRIMET_CROP_REQ_SCRIPT_GP = 'https://www.usbr.gov/gp-bin/et_summaries.pl?station={}&year={}&submit2=++Submit++'
-EARTH_RADIUS = 6371.  # in km
 
 WEATHER_PARAMETRS_UNCONVERTED = [('DATETIME', 'Date - [YYYY-MM-DD]'),
                                  ('ET', 'Evapotranspiration Kimberly-Penman - [in]'),
@@ -116,6 +116,7 @@ MT_STATIONS = ['covm',
 
 
 class Agrimet(object):
+    """ Access Agrimet data from US Bureau of Reclmation regional websites. """
     def __init__(self, start_date=None, end_date=None, station=None,
                  interval=None, lat=None, lon=None, sat_image=None,
                  write_stations=False, region=None):
@@ -147,9 +148,9 @@ class Agrimet(object):
         self.interval = interval
 
         if start_date and end_date:
-            self.start = datetime.strptime(start_date, '%Y-%m-%d')
-            self.end = datetime.strptime(end_date, '%Y-%m-%d')
-            self.today = datetime.now()
+            self.start = dt.datetime.strptime(start_date, '%Y-%m-%d')
+            self.end = dt.datetime.strptime(end_date, '%Y-%m-%d')
+            self.today = dt.datetime.now()
             self.start_index = (self.today - self.start).days - 1
 
         self.rank = 0
@@ -168,9 +169,8 @@ class Agrimet(object):
         sta_ = station_data[self.station]
         self.station_coords = sta_['geometry']['coordinates'][1], sta_['geometry']['coordinates'][0]
 
-    def find_closest_station(self, target_lat, target_lon):
-        """ The two-argument inverse tangent function.
-        :param station_data:
+    def find_closest_station(self, target_lat: float, target_lon: float) -> str:
+        """ Find closest station to given coordinate.
         :param target_lat:
         :param target_lon:
         :return:
@@ -182,7 +182,7 @@ class Agrimet(object):
             stn_crds = feat['geometry']['coordinates']
             stn_site_id = feat['properties']['siteid']
             lat_stn, lon_stn = stn_crds[1], stn_crds[0]
-            dist = geodesic((target_lat, target_lon), (lat_stn, lon_stn)).km
+            dist = met_utils.great_circle_distance((target_lat, target_lon), (lat_stn, lon_stn))
             distances[stn_site_id] = dist
             station_coords[stn_site_id] = lat_stn, lon_stn
         k = min(distances, key=distances.get)
@@ -191,55 +191,53 @@ class Agrimet(object):
         self.station_coords = station_coords
         return k
 
-    def fetch_met_data(self, return_raw=False, out_csv_file=None, long_names=False):
-
-        # if self.region == 'pnro': ## not working anymore
-        #     url = '{}?{}'.format(AGRIMET_MET_REQ_SCRIPT_PN, self.params)
-        #     print(url)
-        #     r = requests.get(url)
-        #     txt = r.text.split('\n')
-        #     s_idx, e_idx = txt.index('BEGIN DATA\r'), txt.index('END DATA\r')
+    def fetch_met_data(self, return_raw: bool = False, out_csv_file: None | str = None) -> pd.DataFrame:
 
         if self.region == 'pnro':
             pairs = ','.join(['{} {}'.format(self.station.upper(), x.upper()) for x in STANDARD_PARAMS])
-            url = "https://www.usbr.gov/pn-bin/webarccsv.pl?parameter={0}&syer={1}&smnth={2}&sdy={3}&" \
-                  "eyer={4}&emnth={5}&edy={6}&format=2".format(pairs,
+            url = 'https://www.usbr.gov/pn-bin/webarccsv.pl?parameter={0}&syer={1}&smnth={2}&sdy={3}&' \
+                  'eyer={4}&emnth={5}&edy={6}&format=2'.format(pairs,
                                                                self.start.year,
                                                                self.start.month,
                                                                self.start.day,
                                                                self.end.year,
                                                                self.end.month,
                                                                self.end.day)
-            r = requests.get(url)
+            r = requests.get(url, timeout=20)
             txt = r.text.split('\n')
             s_idx, e_idx = txt.index('BEGIN DATA'), txt.index('END DATA')
 
-        if self.region == 'great_plains' or self.region == 'gpro':
+        elif self.region in ('great_plains', 'gpro'):
             pairs = ','.join(['{} {}'.format(self.station.upper(), x.upper()) for x in STANDARD_PARAMS])
-            url = "https://www.usbr.gov/gp-bin/webarccsv.pl?parameter={0}&syer={1}&smnth={2}&sdy={3}&" \
-                  "eyer={4}&emnth={5}&edy={6}&format=2".format(pairs,
+            url = 'https://www.usbr.gov/gp-bin/webarccsv.pl?parameter={0}&syer={1}&smnth={2}&sdy={3}&' \
+                  'eyer={4}&emnth={5}&edy={6}&format=2'.format(pairs,
                                                                self.start.year,
                                                                self.start.month,
                                                                self.start.day,
                                                                self.end.year,
                                                                self.end.month,
                                                                self.end.day)
-            r = requests.get(url)
+            r = requests.get(url, timeout=20)
             txt = r.text.split('\r\n')
             s_idx, e_idx = txt.index('BEGIN DATA'), txt.index('END DATA')
+
+        else:  # TODO: add error here?
+            txt = None
+            s_idx = None
+            e_idx = None
 
         content = txt[s_idx + 1: e_idx]
         names = [c.strip() for c in content[0].split(',')]
         data = {name: [x.split(',')[i].strip() for x in content[1:]] for i, name in enumerate(names)}
-        df = DataFrame(data)
+        df = pd.DataFrame(data)
         rename = dict((c, str(c).split(' ')[1]) if c != 'DATE' else (c, c) for c in df.columns)
 
         cols = df.columns[df.dtypes.eq('object')]
-        df[cols] = df[cols].apply(to_numeric, errors='coerce')
+        df[cols] = df[cols].apply(pd.to_numeric, errors='coerce')
         df.rename(columns=rename, inplace=True)
 
-        df.index = date_range(self.start, periods=df.shape[0], name='DateTime')
-        df = df[to_datetime(self.start): to_datetime(self.end)]
+        df.index = pd.date_range(self.start, periods=df.shape[0], name='DateTime')
+        df = df[pd.to_datetime(self.start): pd.to_datetime(self.end)]
 
         df.drop(columns='DATE', inplace=True)
 
@@ -257,7 +255,7 @@ class Agrimet(object):
 
         return df
 
-    def fetch_crop_data(self, out_csv_file=None):
+    def fetch_crop_data(self, out_csv_file: None | str = None) -> pd.DataFrame:
 
         if not self.start.year == self.end.year:
             raise ValueError('Must choose one year for crop water use reports.')
@@ -266,27 +264,31 @@ class Agrimet(object):
             # this may need a recursive scheme to go down list of closest stations
             two_dig_yr = format(int(str(self.start.year)[-2:]), '02d')
             url = AGRIMET_CROP_REQ_SCRIPT_PN.format(self.station, two_dig_yr)
-            raw_df = read_table(url, skip_blank_lines=True, skiprows=[3], index_col=[0],
-                                header=2, engine='python', delim_whitespace=True)
+            raw_df = pd.read_table(url, skip_blank_lines=True, skiprows=[3], index_col=[0],
+                                   header=2, engine='python', delim_whitespace=True)
             raw_df = raw_df.iloc[1:, :]
             try:
                 start_str = raw_df.first_valid_index().replace('/', '')
             except AttributeError:
                 start_str = format(int(raw_df.first_valid_index()), '03d')
 
-        if self.region == 'gp':
+        elif self.region == 'gp':
             raw_df, start_str = self.get_gp_crop()
 
-        et_summary_start = datetime.strptime('{}{}'.format(self.start.year, start_str), '%Y%m%d')
-        raw_df.index = date_range(et_summary_start, periods=raw_df.shape[0])
-        idx = date_range(self.start, end=self.end)
+        else:  # TODO: add error here?
+            start_str = None
+            raw_df = None
+
+        et_summary_start = dt.datetime.strptime('{}{}'.format(self.start.year, start_str), '%Y%m%d')
+        raw_df.index = pd.date_range(et_summary_start, periods=raw_df.shape[0])
+        idx = pd.date_range(self.start, end=self.end)
 
         raw_df.replace('--', '0.0', inplace=True)
         cols = raw_df.columns.values.tolist()
         try:
             raw_df = raw_df.astype(float)
         except ValueError:
-            raw_df = (raw_df.drop(cols, axis=1).join(raw_df[cols].apply(to_numeric, errors='coerce')))
+            raw_df = (raw_df.drop(cols, axis=1).join(raw_df[cols].apply(pd.to_numeric, errors='coerce')))
 
         raw_df.interpolate(inplace=True)
 
@@ -302,19 +304,19 @@ class Agrimet(object):
 
     def get_gp_crop(self):
         url = AGRIMET_CROP_REQ_SCRIPT_GP.format(self.station, self.start.year)
-        data = requests.get(url).content
+        data = requests.get(url, timeout=20).content
         str_data = str(data, 'utf-8')
-        file = open('data.txt', 'w')
-        file.write(str_data)
-        raw_df = read_table('data.txt', skip_blank_lines=True, skiprows=[0, 1, 2, 3, 5, 6], index_col=[0],
-                            engine='python', delim_whitespace=True, error_bad_lines=False)
+        with open('data.txt', 'w') as file:
+            file.write(str_data)
+        raw_df = pd.read_table('data.txt', skip_blank_lines=True, skiprows=[0, 1, 2, 3, 5, 6],
+                               index_col=[0], engine='python', delim_whitespace=True, error_bad_lines=False)
 
         raw_df = raw_df.iloc[2:, :]
         start_str = format(int(raw_df.first_valid_index()), '03d')
         return raw_df, start_str
 
-    def _reformat_dataframe(self, df):
-
+    def _reformat_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """ Reformat DataFrame, including dropping special parameters and changing units. """
         old_cols = df.columns.values.tolist()
         head_1 = []
         head_2 = []
@@ -330,8 +332,8 @@ class Agrimet(object):
         if len(list(df.columns)) > len(head_1):
             drop = [c for c in df.columns if c not in head_1]
             print('dropping special parameters dataframe columns....')
-            pprint(drop)
-            df = deepcopy(df[head_1])
+            pprint.pprint(drop)
+            df = copy.deepcopy(df[head_1])
 
         df.columns = [head_1, head_2, head_3]
 
@@ -364,6 +366,7 @@ class Agrimet(object):
 
     @staticmethod
     def write_agrimet_sation_shp(json_data, epsg, out):
+        """ Create shapefile with agrimet stations. """
         agri_schema = {'geometry': 'Point',
                        'properties': {
                            'program': 'str',
@@ -399,7 +402,7 @@ class Agrimet(object):
                     pass
 
 
-def load_stations(fix=True):
+def load_stations(fix: bool = True) -> dict:
     """ Load metadata from USBR PNW region website.
 
     Parameters
@@ -407,7 +410,7 @@ def load_stations(fix=True):
     fix: bool, optional; as of 08/14/2024, many GP region stations do not have install dates listed, so if fix=True,
     these dates are manually added.
     """
-    r = requests.get(STATION_INFO_URL)
+    r = requests.get(STATION_INFO_URL, timeout=20)
     stations = json.loads(r.text)
     stations = stations['features']
     stations = {s['properties']['siteid']: s for s in stations}
@@ -426,7 +429,7 @@ def load_stations(fix=True):
                        '06/27/1996', '06/18/2001', '05/19/1992', '03/27/2001', '05/16/2001',
                        '05/17/2001']
         for stn in range(21):
-            all_stns[gp_stns[stn]]['properties']['install'] = gp_installs[stn]
+            stations[gp_stns[stn]]['properties']['install'] = gp_installs[stn]
 
     return stations
 
@@ -435,68 +438,69 @@ if __name__ == '__main__':
     # Finding average length of period of record for Montana Agrimet stations
     all_stns = load_stations()
 
-    installs = pd.DataFrame()
-    i = 0
-    for k in all_stns.keys():
-        install = all_stns[k]['properties']['install']
-        if (len(install) > 0) and (all_stns[k]['properties']['state'] == 'MT'):
-            installs.at[i, 'ID'] = k
-            installs.at[i, 'Install'] = dt.datetime.strptime(install, '%m/%d/%Y')
-            installs.at[i, 'POR'] = dt.date.today() - installs.at[i, 'Install'].date()
-            i += 1
-    print(i)
-    print(installs)
-    print(installs['POR'].mean())
-    print(7963 / 365)  # 22 years on 8/19/24
-
-    years = pd.date_range('1984-01-01', '2025-01-01', freq='YS')
-
-    plt.figure(figsize=(12, 5))
-    plt.suptitle('Agrimet Station Period of Record Summary')
-
-    plt.subplot(121)
-    plt.xlabel('year of install')
-    plt.ylabel('number of stations')
-    plt.grid(axis='y', zorder=1)
-    plt.hist(installs['Install'], bins=years, rwidth=0.9, align='left', zorder=3)
-
-    plt.subplot(122)
-    plt.xlabel('year')
-    plt.ylabel('fraction of stations with data')
-    plt.grid(axis='y', zorder=1)
-    plt.hist(installs['Install'], bins=years, rwidth=0.9, align='left', zorder=3, cumulative=True, density=True)
-
-    plt.tight_layout()
-    plt.show()
-
-    # Both Agrimet and Mesonet
-
-    # prepping mesonet
-    from mesonet import stns_metadata
-    metadata = stns_metadata(False)  # No install date for inactive stations... :(
-    installs_mn = pd.DataFrame(index=metadata.keys(), columns=['Install Date'])
-    for k, v in metadata.items():
-        installs_mn.loc[k] = v['date_installed']
-    installs_mn['Install Date'] = pd.to_datetime(installs_mn['Install Date'])
-
-    # plotting
-    plt.figure(figsize=(12, 5))
-    plt.suptitle('Weather Station Period of Record Summary')
-
-    plt.subplot(121)
-    plt.xlabel('year of install')
-    plt.ylabel('number of stations')
-    plt.grid(axis='y', zorder=1)
-    plt.hist([installs['Install'], installs_mn['Install Date']], bins=years, rwidth=0.9, align='left', zorder=3, stacked=True)
-    plt.legend(['Agrimet', 'Mesonet'])
-
-    plt.subplot(122)
-    plt.xlabel('year')
-    plt.ylabel('fraction of stations with data')
-    plt.grid(axis='y', zorder=1)
-    plt.hist([installs['Install'], installs_mn['Install Date']], bins=years, rwidth=0.9, align='left', zorder=3,
-             cumulative=True, stacked=True)
-    plt.tight_layout()
-    plt.show()
+    # installs = pd.DataFrame()
+    # i = 0
+    # for key in all_stns.keys():
+    #     install = all_stns[key]['properties']['install']
+    #     if (len(install) > 0) and (all_stns[key]['properties']['state'] == 'MT'):
+    #         installs.at[i, 'ID'] = key
+    #         installs.at[i, 'Install'] = dt.datetime.strptime(install, '%m/%d/%Y')
+    #         installs.at[i, 'POR'] = dt.date.today() - installs.at[i, 'Install'].date()
+    #         i += 1
+    # print(i)
+    # print(installs)
+    # print(installs['POR'].mean())
+    # print(7963 / 365)  # 22 years on 8/19/24
+    #
+    # years = pd.date_range('1984-01-01', '2025-01-01', freq='YS')
+    #
+    # plt.figure(figsize=(12, 5))
+    # plt.suptitle('Agrimet Station Period of Record Summary')
+    #
+    # plt.subplot(121)
+    # plt.xlabel('year of install')
+    # plt.ylabel('number of stations')
+    # plt.grid(axis='y', zorder=1)
+    # plt.hist(installs['Install'], bins=years, rwidth=0.9, align='left', zorder=3)
+    #
+    # plt.subplot(122)
+    # plt.xlabel('year')
+    # plt.ylabel('fraction of stations with data')
+    # plt.grid(axis='y', zorder=1)
+    # plt.hist(installs['Install'], bins=years, rwidth=0.9, align='left', zorder=3, cumulative=True, density=True)
+    #
+    # plt.tight_layout()
+    # plt.show()
+    #
+    # # Both Agrimet and Mesonet
+    #
+    # # prepping mesonet
+    # from mesonet import stns_metadata
+    # metadata = stns_metadata(False)  # No install date for inactive stations... :(
+    # installs_mn = pd.DataFrame(index=metadata.keys(), columns=['Install Date'])
+    # for key, val in metadata.items():
+    #     installs_mn.loc[key] = val['date_installed']
+    # installs_mn['Install Date'] = pd.to_datetime(installs_mn['Install Date'])
+    #
+    # # plotting
+    # plt.figure(figsize=(12, 5))
+    # plt.suptitle('Weather Station Period of Record Summary')
+    #
+    # plt.subplot(121)
+    # plt.xlabel('year of install')
+    # plt.ylabel('number of stations')
+    # plt.grid(axis='y', zorder=1)
+    # plt.hist([installs['Install'], installs_mn['Install Date']], bins=years,
+    #          rwidth=0.9, align='left', zorder=3, stacked=True)
+    # plt.legend(['Agrimet', 'Mesonet'])
+    #
+    # plt.subplot(122)
+    # plt.xlabel('year')
+    # plt.ylabel('fraction of stations with data')
+    # plt.grid(axis='y', zorder=1)
+    # plt.hist([installs['Install'], installs_mn['Install Date']], bins=years, rwidth=0.9, align='left', zorder=3,
+    #          cumulative=True, stacked=True)
+    # plt.tight_layout()
+    # plt.show()
 
 # ========================= EOF ====================================================================
