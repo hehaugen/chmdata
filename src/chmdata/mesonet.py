@@ -21,11 +21,12 @@ from datetime import date
 import json
 
 # import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import requests
 
-from src.chmdata import met_utils
-
+# from src.chmdata import met_utils
+# from chmdata import met_utils
 # import met_utils  # doesn't work. Why?
 
 # TODO: update constants?
@@ -225,11 +226,33 @@ DICT_ALL2 = dict(zip(ALL_LONG_NAMES, ALL_ELEMS))
 print(DICT_ALL2)
 
 
+def great_circle_distance(here, there) -> float:
+    """Calculate great circle distance between 2 points in km.
+
+    reference: https://en.wikipedia.org/wiki/Great-circle_distance
+
+    Args:
+        here: 1st point, (lat, lon), decimal degrees
+        there: 2nd point, (lat, lon), decimal degrees
+
+    Returns:
+        d: distance in km
+    """
+    r = 6371.0  # km
+    lat1 = np.radians(here[0])
+    lon1 = np.radians(here[1])
+    lat2 = np.radians(there[0])
+    lon2 = np.radians(there[1])
+    central_angle = np.arccos(np.sin(lat1) * np.sin(lat2) + np.cos(lat1) * np.cos(lat2) * np.cos(abs(lon1 - lon2)))
+    d = r * central_angle
+    return d
+
+
 class Mesonet:
-    """Access Mesonet data from the Montana Climate Office."""
+    """Mesonet data from the Montana Climate Office."""
 
     def __init__(self, stn_id=None, stn_name=None, lat=None, lon=None):
-        """Allow initialization with station id, station name, or a set of lat and lon.
+        """Initializes instance with station id, station name, or a set of lat and lon.
 
         Priority is in order listed. Establishes which station an instance is, as well as basic info.
         For data downlaod, see get_data() method below.
@@ -246,13 +269,13 @@ class Mesonet:
         if stn_id is not None and stn_id in self.all_metadata:
             self.station = stn_id
             self.lat = self.all_metadata[self.station]["latitude"]
-            self.lon = self.all_metadata[self.station]["latitude"]
+            self.lon = self.all_metadata[self.station]["longitude"]
             self.dist_from_stn = None
         # Else, if station name is given, and it's valid, that's the station
         elif stn_name is not None and self.find_stn_abr(stn_name) is not None:
             self.station = self.find_stn_abr(stn_name)
             self.lat = self.all_metadata[self.station]["latitude"]
-            self.lon = self.all_metadata[self.station]["latitude"]
+            self.lon = self.all_metadata[self.station]["longitude"]
             self.dist_from_stn = None
         # Else, if lat and lon given, and coordinates are in/near Montana, use the closest station
         elif lat is not None and lon is not None and self.closest_station() < 300:  # km
@@ -274,11 +297,11 @@ class Mesonet:
         self.data = pd.DataFrame()
 
     def station_vars(self) -> list[str]:
-        """Retrieve avilable Mesonet variables for this station.
+        """Retrieves avilable Mesonet variables for this station.
 
         Availability by station is determined by what network the station is a part of: hydromet or agrimet.
 
-        Return:
+        Returns:
             var_names: A list of available station variables.
         """
         url = f"https://mesonet.climate.umt.edu/api/v2/elements/{self.station}/?type=json"
@@ -288,12 +311,12 @@ class Mesonet:
         return var_names
 
     def closest_station(self) -> float:
-        """Given a set of coordinates, determine which Mesonet station is the closest.
+        """Determines which Mesonet station is the closest given a set of coordinates.
 
         Should this set the name and return the distance, or set the distance and return the name?
         Do both/either work?
 
-        Return:
+        Returns:
             distances[k]: distance to closest station in km
         """
         distances = {}
@@ -302,7 +325,8 @@ class Mesonet:
             stn_site_id = k
             lat_stn = feat["latitude"]
             lon_stn = feat["longitude"]
-            dist = met_utils.great_circle_distance((self.lat, self.lon), (lat_stn, lon_stn))
+            dist = great_circle_distance((self.lat, self.lon), (lat_stn, lon_stn))
+            # dist = met_utils.great_circle_distance((self.lat, self.lon), (lat_stn, lon_stn))
             distances[stn_site_id] = dist
             station_coords[stn_site_id] = lat_stn, lon_stn
         k = min(distances, key=distances.get)
@@ -313,7 +337,7 @@ class Mesonet:
 
     @staticmethod
     def find_stn_abr(target_name: str) -> str | None:
-        """Take a known station name, return the abreviated key used to identify it."""
+        """Takes a known station name, returns the abreviated key used to identify it."""
         info = stns_metadata()  # should this be self.all_metadata?
         for k, v in info.items():
             # Remove case sensitivity
@@ -323,24 +347,24 @@ class Mesonet:
         return None
 
     def get_data(self, elems="", der_elems=None, start="", end="", time_step="daily", units="us", public=True):
-        """Download Mesonet data for a single station from Montana Climate Office and save to self.data.
+        """Downloads Mesonet data for a single station from Montana Climate Office and saves to self.data.
 
         This version just overwrites the previous data, no advanced duplicate/inclusion checking.
         Start date is inclusive, end date is exclusive.
         Hourly data is downloaded by the day, so for each day in the date range, 24 observations will be reported.
 
-        Parameters
-        ----------
-        self: this Mesonet station object
-        elems: list of str, desired variables from OBSERVATIONS to fetch. By default, all variables will be downloaded.
-        Pass 'None' to download no observation data.
-        der_elems: list of str, desired variables from DERIVED to fetch. By default, no variables will be downloaded.
-        Pass '' (empty str) to download all derived data.
-        start: str, optional; YYYY-MM-DD format (inclusive)
-        end: str, optional; YYYY-MM-DD format (exclusive)
-        time_step: str, optional; either 'daily' or 'hourly' to determine time period over which to aggregate data
-        units: str, optional; either 'us' or 'si' to determine the output units. NOTE: issue with gdd var and si units.
-        public: whether to include more obscure/maintenance associated variables like battery and sensor temp.
+        Args:
+            elems: list of str, desired variables from OBSERVATIONS to fetch. By default, all variables will be
+              downloaded. Pass 'None' to download no observation data.
+            der_elems: list of str, desired variables from DERIVED to fetch. By default, no variables will be
+              downloaded. Pass '' (empty str) to download all derived data.
+            start: str, optional; YYYY-MM-DD format (inclusive)
+            end: str, optional; YYYY-MM-DD format (exclusive)
+            time_step: str, optional; either 'daily' or 'hourly' to determine time period over which to aggregate data
+            units: str, optional; either 'us' or 'si' to determine the output units.
+              NOTE: issue with gdd var and si units.
+            public: bool, optional; whether to include more obscure/maintenance associated variables like battery
+            and sensor temp. If True, a smaller subset of variables will be downloaded.
         """
 
         # Check for correct inputs
@@ -365,6 +389,9 @@ class Mesonet:
         # If start not provided, find install date of station
         if start == "":
             start = stn_metadata["date_installed"]
+            if type(start) is int:
+                start = date.fromtimestamp(start / 1000)  # they switched it to milliseconds.
+                start = start.strftime("%Y-%m-%d")
             print(f"{self.station} install date: {start}")
         # If end not provided, choose one (which logic to use?)
         if end == "":
@@ -417,24 +444,24 @@ class Mesonet:
         return self.data
 
     def get_data1(self, elems="", der_elems=None, start="", end="", time_step="daily", units="us", public=True):
-        """Download Mesonet data for a single station from Montana Climate Office and save to self.data.
+        """Downloads Mesonet data for a single station from Montana Climate Office and saves to self.data.
 
         This version is trying to be dynamically updating, and that is proving really tricky.
         Start date is inclusive, end date is exclusive.
         Hourly data is downloaded by the day, so for each day in the date range, 24 observations will be reported.
 
-        Parameters
-        ----------
-        self: this Mesonet station object
-        elems: list of str, desired variables from OBSERVATIONS to fetch. By default, all variables will be downloaded.
-        Pass 'None' to download no observation data.
-        der_elems: list of str, desired variables from DERIVED to fetch. By default, no variables will be downloaded.
-        Pass '' (empty str) to download all derived data.
-        start: str, optional; YYYY-MM-DD format (inclusive)
-        end: str, optional; YYYY-MM-DD format (exclusive)
-        time_step: str, optional; either 'daily' or 'hourly' to determine time period over which to aggregate data
-        units: str, optional; either 'us' or 'si' to determine the output units. NOTE: issue with gdd var and si units.
-        public: whether to include more obscure/maintenance associated variables like battery and sensor temp.
+        Args:
+            elems: list of str, desired variables from OBSERVATIONS to fetch. By default, all variables will be
+              downloaded. Pass 'None' to download no observation data.
+            der_elems: list of str, desired variables from DERIVED to fetch. By default, no variables will be
+              downloaded. Pass '' (empty str) to download all derived data.
+            start: str, optional; YYYY-MM-DD format (inclusive)
+            end: str, optional; YYYY-MM-DD format (exclusive)
+            time_step: str, optional; either 'daily' or 'hourly' to determine time period over which to aggregate data.
+            units: str, optional; either 'us' or 'si' to determine the output units.
+              NOTE: issue with gdd var and si units.
+            public: bool, optional; whether to include more obscure/maintenance associated variables like battery
+              and sensor temp.
         """
 
         # Check for correct inputs
@@ -477,6 +504,9 @@ class Mesonet:
         # If start not provided, find install date of station
         if start == "":
             start = stn_metadata["date_installed"]
+            if type(start) is int:
+                start = date.fromtimestamp(start / 1000)  # they switched it to milliseconds.
+                start = start.strftime("%Y-%m-%d")
             print(f"{self.station} install date: {start}")
         # If end not provided, choose one (which logic to use?)
         if end == "":
@@ -538,13 +568,13 @@ class Mesonet:
 
 
 def stns_metadata(active: bool = True) -> dict:
-    """Retrieve Mesonet station metadata.
+    """Retrieves metadata for Mesonet stations.
 
-    Parameters:
-        active: bool, optional; if True, retieve only currently active stations,
-            if False, retrieve info for all stations.
+    Args:
+        active: bool, optional; if True, retrieve only currently active stations,
+          if False, retrieve info for all stations.
 
-    Return:
+    Returns:
         stns_dict: A dictionary of station metadata.
     """
 
@@ -564,6 +594,9 @@ def stns_metadata(active: bool = True) -> dict:
     for stn in stations:
         # retrieve station identifier
         temp = stn["station"]
+        if type(stn["date_installed"]) is int:  # they switched it to milliseconds.
+            stn["date_installed"] = date.fromtimestamp(stn["date_installed"] / 1000)
+            stn["date_installed"] = stn["date_installed"].strftime("%Y-%m-%d")
         # remove station identifier from existing dictionary
         stn.pop("station")
         # store info as values in dictionary by station identifier keys
