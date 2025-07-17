@@ -1,4 +1,4 @@
-""" Functions to retrieve Agrimet-related data from US Bureau of Reclamation regional websites. """
+"""Functions to retrieve Agrimet-related data from US Bureau of Reclamation regional websites."""
 
 # =============================================================================================
 # Copyright 2017 dgketchum
@@ -15,26 +15,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================================
-# from __future__ import print_function, absolute_import
 
 import copy
 import datetime as dt
 import json
 import pprint
 
-from fiona import collection
-from fiona.crs import from_epsg
+from fiona import collection  # only needed for write_agrimet_sation_shp
+from fiona.crs import from_epsg  # only needed for write_agrimet_sation_shp
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import requests
 from requests.compat import urlencode, OrderedDict
 
-from src.chmdata import met_utils
-
+# from src.chmdata import met_utils
+# from chmdata import met_utils
+# from chmdata import great_circle_distance
 # import met_utils  # doesn't work
 
 STATION_INFO_URL = "https://www.usbr.gov/pn/agrimet/agrimetmap/usbr_map.json"  # Still missing many install dates
-# AGRIMET_MET_REQ_SCRIPT_PN = "https://www.usbr.gov/pn-bin/agrimet.pl" ## appears to be broken
 AGRIMET_MET_REQ_SCRIPT_PN = "https://www.usbr.gov/pn-bin/agrimet.pl"
 AGRIMET_CROP_REQ_SCRIPT_PN = "https://www.usbr.gov/pn/agrimet/chart/{}{}et.txt"
 AGRIMET_MET_REQ_SCRIPT_GP = "https://www.usbr.gov/gp-bin/agrimet_archives.pl"
@@ -134,33 +134,68 @@ MT_STATIONS = [
 ]
 
 
+def great_circle_distance(here, there) -> float:
+    """Calculate great circle distance between 2 points in km.
+
+    reference: https://en.wikipedia.org/wiki/Great-circle_distance
+
+    Args:
+        here: 1st point, (lat, lon), decimal degrees
+        there: 2nd point, (lat, lon), decimal degrees
+
+    Returns:
+        d: distance in km
+    """
+    r = 6371.0  # km
+    lat1 = np.radians(here[0])
+    lon1 = np.radians(here[1])
+    lat2 = np.radians(there[0])
+    lon2 = np.radians(there[1])
+    central_angle = np.arccos(np.sin(lat1) * np.sin(lat2) + np.cos(lat1) * np.cos(lat2) * np.cos(abs(lon1 - lon2)))
+    d = r * central_angle
+    return d
+
+
 class Agrimet(object):
     """Access Agrimet data from US Bureau of Reclmation regional websites."""
 
     def __init__(
         self,
-        start_date=None,
-        end_date=None,
-        station=None,
-        interval=None,
-        lat=None,
-        lon=None,
-        sat_image=None,
-        write_stations=False,
-        region=None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        station: str | None = None,
+        interval=None,  # What would this be?
+        lat: float | None = None,
+        lon: float | None = None,
+        sat_image=None,  # What would this be?
+        region: str | None = None,
     ):
+        """Initializes instance with either a station id, an image, or coordinates.
+
+        Args:
+            start_date: start date for period of interest, in YYYY-MM-DD format.
+            end_date: end date for period of interest, in YYYY-MM-DD format.
+            station: four-letter station id.
+            interval:
+            lat:
+            lon:
+            sat_image:
+            region:
+        """
         self.station_info_url = STATION_INFO_URL
         self.station = station
         self.distance_from_station = None
         self.station_coords = None
         self.distances = None
-        self.region = region
-
         self.empty_df = True
+        self.interval = interval
 
-        if not station and not write_stations:
+        # Determine which station this should be
+        if station:
+            self.find_station_coords()
+        else:
             if not lat and not sat_image:
-                raise ValueError("Must initialize agrimet with a station, " "an Image, or some coordinates.")
+                raise ValueError("Must initialize agrimet with a station, an Image, or some coordinates.")
             if not sat_image:
                 self.station = self.find_closest_station(lat, lon)
             else:
@@ -168,18 +203,23 @@ class Agrimet(object):
                 lon = (sat_image.corner_ll_lon_product + sat_image.corner_lr_lon_product) / 2
                 self.station = self.find_closest_station(lat, lon)
 
-        if station:
-            self.find_station_coords()
+        if not region:
+            station_data = load_stations()
+            self.region = station_data[station]["properties"]["region"]
 
-        self.interval = interval
-
-        if start_date and end_date:
+        # Assign start and end dates
+        if start_date:
             self.start = dt.datetime.strptime(start_date, "%Y-%m-%d")
-            self.end = dt.datetime.strptime(end_date, "%Y-%m-%d")
             self.today = dt.datetime.now()
             self.start_index = (self.today - self.start).days - 1
-
-        self.rank = 0
+        else:
+            station_data = load_stations()
+            install_date = station_data[station]["properties"]["install"]
+            self.start = dt.datetime.strptime(install_date, "%m/%d/%Y")
+        if end_date:
+            self.end = dt.datetime.strptime(end_date, "%Y-%m-%d")
+        else:
+            self.end = dt.datetime.now()
 
     @property
     def params(self):
@@ -195,11 +235,7 @@ class Agrimet(object):
         self.station_coords = sta_["geometry"]["coordinates"][1], sta_["geometry"]["coordinates"][0]
 
     def find_closest_station(self, target_lat: float, target_lon: float) -> str:
-        """Find closest station to given coordinate.
-        :param target_lat:
-        :param target_lon:
-        :return:
-        """
+        """Finds closest station to given decimal degree coordinate."""
         distances = {}
         station_coords = {}
         station_data = load_stations()
@@ -207,7 +243,8 @@ class Agrimet(object):
             stn_crds = feat["geometry"]["coordinates"]
             stn_site_id = feat["properties"]["siteid"]
             lat_stn, lon_stn = stn_crds[1], stn_crds[0]
-            dist = met_utils.great_circle_distance((target_lat, target_lon), (lat_stn, lon_stn))
+            dist = great_circle_distance((target_lat, target_lon), (lat_stn, lon_stn))
+            # dist = met_utils.great_circle_distance((target_lat, target_lon), (lat_stn, lon_stn))
             distances[stn_site_id] = dist
             station_coords[stn_site_id] = lat_stn, lon_stn
         k = min(distances, key=distances.get)
@@ -216,9 +253,28 @@ class Agrimet(object):
         self.station_coords = station_coords
         return k
 
-    def fetch_met_data(self, return_raw: bool = False, out_csv_file: None | str = None) -> pd.DataFrame:
-        if self.region == "pnro":
+    def fetch_met_data(
+        self, params: list[str] | None = None, return_raw: bool = False, out_csv_file: None | str = None
+    ) -> pd.DataFrame:
+        """Fetches meteorological data from USBR website.
+
+        Args:
+            params: optional list of parameters to download. defualt None - all available parameters will be downloaded.
+            return_raw: optional, default False - function returns reformatted data with changed units and dropped
+              parameters (see _reformat_dataframe). If True, do not reformat dataframe.
+            out_csv_file: optional filepath to save data as a csv. If None, data is only stored in memory.
+
+        Returns:
+            df: requested data.
+        """
+
+        # build parameter selection portion of data request url
+        if params:
+            pairs = ",".join([f"{self.station.upper()} {x.upper()}" for x in params])
+        else:
             pairs = ",".join([f"{self.station.upper()} {x.upper()}" for x in STANDARD_PARAMS])
+
+        if self.region == "pnro":
             url = (
                 "https://www.usbr.gov/pn-bin/webarccsv.pl?parameter={0}&syer={1}&smnth={2}&sdy={3}&"
                 "eyer={4}&emnth={5}&edy={6}&format=2".format(
@@ -236,7 +292,6 @@ class Agrimet(object):
             s_idx, e_idx = txt.index("BEGIN DATA"), txt.index("END DATA")
 
         elif self.region in ("great_plains", "gpro"):
-            pairs = ",".join([f"{self.station.upper()} {x.upper()}" for x in STANDARD_PARAMS])
             url = (
                 "https://www.usbr.gov/gp-bin/webarccsv.pl?parameter={0}&syer={1}&smnth={2}&sdy={3}&"
                 "eyer={4}&emnth={5}&edy={6}&format=2".format(
@@ -287,7 +342,8 @@ class Agrimet(object):
 
         return df
 
-    def fetch_crop_data(self, out_csv_file: None | str = None) -> pd.DataFrame:
+    def fetch_crop_data(self, out_csv_file: str | None = None) -> pd.DataFrame:
+        """Gets ET data from USBR websites."""
         if not self.start.year == self.end.year:
             raise ValueError("Must choose one year for crop water use reports.")
 
@@ -311,7 +367,7 @@ class Agrimet(object):
                 start_str = format(int(raw_df.first_valid_index()), "03d")
 
         elif self.region == "gp":
-            raw_df, start_str = self.get_gp_crop()
+            raw_df, start_str = self._get_gp_crop()
 
         else:  # TODO: add error here?
             start_str = None
@@ -340,7 +396,8 @@ class Agrimet(object):
 
         return reformed_data
 
-    def get_gp_crop(self):
+    def _get_gp_crop(self):
+        """Gets ET data from USBR Great Plains region website. Used in fetch_drop_data."""
         url = AGRIMET_CROP_REQ_SCRIPT_GP.format(self.station, self.start.year)
         data = requests.get(url, timeout=20).content
         str_data = str(data, "utf-8")
@@ -361,7 +418,7 @@ class Agrimet(object):
         return raw_df, start_str
 
     def _reformat_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Reformat DataFrame, including dropping special parameters and changing units."""
+        """Reformat DataFrame, including dropping special parameters, changing units, and simple outlier removal."""
         old_cols = df.columns.values.tolist()
         head_1 = []
         head_2 = []
@@ -388,18 +445,36 @@ class Agrimet(object):
                 if col in ["ET", "ETRS", "ETOS", "PC", "PP", "PU"]:
                     # in to mm
                     df[col] *= 25.4
+                    # all should be positive.
+                    df[col] = df[col].where(df[col] > 0)
+                if col == "ET":
+                    # ET should be less than 30 mm/day.
+                    df[col] = df[col].where(df[col] < 25)
                 if col in ["MN", "MX", "MM", "YM"]:
                     # F to C
                     df[col] = (df[col] - 32) * 5 / 9
                 if col in ["UA", "WG"]:
                     # mph to m s-1
                     df[col] *= 0.44704
+                    # wind speed should be positive.
+                    df[col] = df[col].where(df[col] > 0)
+                    # ... and less than 90 m/s (200mph).
+                    df[col] = df[col].where(df[col] < 90)
                 if col == "WR":
                     # mi to m
                     df["WR"] *= 1609.34
+                    # wind run should be positive.
+                    df[col] = df[col].where(df[col] > 0)
+                    # ... and less than 5 million.
+                    df[col] = df[col].where(df[col] < 5e6)
                 if col == "SR":
                     # Langleys to W m-2
                     df["SR"] /= 23.900574
+                    # set very high ceiling for reasonable global solar radiation.
+                    df[col] = df[col].where(df[col] < 100)
+                if col == "TG":
+                    # set very high ceiling for reasonable growing degree days.
+                    df[col] = df[col].where(df[col] < 15000)
             except KeyError:
                 head_1.remove(head_1[i])
                 head_2.remove(head_2[i])
@@ -410,7 +485,7 @@ class Agrimet(object):
         return df
 
     @staticmethod
-    def write_agrimet_sation_shp(json_data, epsg, out):
+    def write_agrimet_sation_shp(json_data, epsg, out) -> None:
         """Create shapefile with agrimet stations."""
         agri_schema = {
             "geometry": "Point",
@@ -457,10 +532,12 @@ class Agrimet(object):
 def load_stations(fix: bool = True) -> dict:
     """Load metadata from USBR PNW region website.
 
-    Parameters
-    ----------
-    fix: bool, optional; as of 08/14/2024, many GP region stations do not have install dates listed, so if fix=True,
-    these dates are manually added.
+    Args:
+        fix: bool, optional; as of 08/14/2024, many GP region stations do not have install dates listed, so if
+          fix=True, these dates are manually added.
+
+    Returns:
+        stations: metadata dictionary.
     """
     r = requests.get(STATION_INFO_URL, timeout=20)
     stations = json.loads(r.text)
