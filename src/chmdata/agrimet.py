@@ -24,15 +24,11 @@ import pprint
 from fiona import collection  # only needed for write_agrimet_sation_shp
 from fiona.crs import from_epsg  # only needed for write_agrimet_sation_shp
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import requests
 from requests.compat import urlencode, OrderedDict
 
-# from src.chmdata import met_utils
-# from chmdata import met_utils
-# from chmdata import great_circle_distance
-# import met_utils  # doesn't work
+from chmdata.met_utils import great_circle_distance
 
 STATION_INFO_URL = "https://www.usbr.gov/pn/agrimet/agrimetmap/usbr_map.json"  # Still missing many install dates
 AGRIMET_MET_REQ_SCRIPT_PN = "https://www.usbr.gov/pn-bin/agrimet.pl"
@@ -134,28 +130,6 @@ MT_STATIONS = [
 ]
 
 
-def great_circle_distance(here, there) -> float:
-    """Calculate great circle distance between 2 points in km.
-
-    reference: https://en.wikipedia.org/wiki/Great-circle_distance
-
-    Args:
-        here: 1st point, (lat, lon), decimal degrees
-        there: 2nd point, (lat, lon), decimal degrees
-
-    Returns:
-        d: distance in km
-    """
-    r = 6371.0  # km
-    lat1 = np.radians(here[0])
-    lon1 = np.radians(here[1])
-    lat2 = np.radians(there[0])
-    lon2 = np.radians(there[1])
-    central_angle = np.arccos(np.sin(lat1) * np.sin(lat2) + np.cos(lat1) * np.cos(lat2) * np.cos(abs(lon1 - lon2)))
-    d = r * central_angle
-    return d
-
-
 class Agrimet(object):
     """Access Agrimet data from US Bureau of Reclmation regional websites."""
 
@@ -205,7 +179,7 @@ class Agrimet(object):
 
         if not region:
             station_data = load_stations()
-            self.region = station_data[station]["properties"]["region"]
+            self.region = station_data[self.station]["properties"]["region"]
 
         # Assign start and end dates
         if start_date:
@@ -214,7 +188,7 @@ class Agrimet(object):
             self.start_index = (self.today - self.start).days - 1
         else:
             station_data = load_stations()
-            install_date = station_data[station]["properties"]["install"]
+            install_date = station_data[self.station]["properties"]["install"]
             self.start = dt.datetime.strptime(install_date, "%m/%d/%Y")
         if end_date:
             self.end = dt.datetime.strptime(end_date, "%Y-%m-%d")
@@ -239,12 +213,11 @@ class Agrimet(object):
         distances = {}
         station_coords = {}
         station_data = load_stations()
-        for feat in station_data["features"]:
+        for code, feat in station_data.items():
             stn_crds = feat["geometry"]["coordinates"]
             stn_site_id = feat["properties"]["siteid"]
             lat_stn, lon_stn = stn_crds[1], stn_crds[0]
             dist = great_circle_distance((target_lat, target_lon), (lat_stn, lon_stn))
-            # dist = met_utils.great_circle_distance((target_lat, target_lon), (lat_stn, lon_stn))
             distances[stn_site_id] = dist
             station_coords[stn_site_id] = lat_stn, lon_stn
         k = min(distances, key=distances.get)
@@ -601,7 +574,12 @@ def load_stations(fix: bool = True) -> dict:
 
 if __name__ == "__main__":
     # Finding average length of period of record for Montana Agrimet stations
-    all_stns = load_stations()
+    # all_stns = load_stations()
+
+    thing = Agrimet(lat=46.5889579, lon=-112.0152353)  # WRD building in Helena, MT
+    # print(Mesonet(lat=46.5889579, lon=-112.0152353))
+    print()
+    print(thing.station)
 
     # installs = pd.DataFrame()
     # i = 0

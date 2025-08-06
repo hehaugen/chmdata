@@ -21,13 +21,10 @@ from datetime import date
 import json
 
 # import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import requests
 
-# from src.chmdata import met_utils
-# from chmdata import met_utils
-# import met_utils  # doesn't work. Why?
+from chmdata.met_utils import great_circle_distance
 
 # TODO: update constants?
 # Available variables from the observations endpoints.
@@ -126,7 +123,7 @@ OBSERVATIONS = [
     "wind",
 ]
 
-print(len(OBSERVATIONS))  # 89
+# print(len(OBSERVATIONS))  # 89
 
 # Available variables from the derived endpoints
 # Note: 'gdd' (growing degree days) only available at daily time steps, not hourly.
@@ -223,29 +220,7 @@ DER_LONG_NAMES = [
 ALL_ELEMS = OBSERVATIONS + DERIVED
 ALL_LONG_NAMES = OBS_LONG_NAMES + DER_LONG_NAMES
 DICT_ALL2 = dict(zip(ALL_LONG_NAMES, ALL_ELEMS))
-print(DICT_ALL2)
-
-
-def great_circle_distance(here, there) -> float:
-    """Calculate great circle distance between 2 points in km.
-
-    reference: https://en.wikipedia.org/wiki/Great-circle_distance
-
-    Args:
-        here: 1st point, (lat, lon), decimal degrees
-        there: 2nd point, (lat, lon), decimal degrees
-
-    Returns:
-        d: distance in km
-    """
-    r = 6371.0  # km
-    lat1 = np.radians(here[0])
-    lon1 = np.radians(here[1])
-    lat2 = np.radians(there[0])
-    lon2 = np.radians(there[1])
-    central_angle = np.arccos(np.sin(lat1) * np.sin(lat2) + np.cos(lat1) * np.cos(lat2) * np.cos(abs(lon1 - lon2)))
-    d = r * central_angle
-    return d
+# print(DICT_ALL2)
 
 
 class Mesonet:
@@ -326,7 +301,6 @@ class Mesonet:
             lat_stn = feat["latitude"]
             lon_stn = feat["longitude"]
             dist = great_circle_distance((self.lat, self.lon), (lat_stn, lon_stn))
-            # dist = met_utils.great_circle_distance((self.lat, self.lon), (lat_stn, lon_stn))
             distances[stn_site_id] = dist
             station_coords[stn_site_id] = lat_stn, lon_stn
         k = min(distances, key=distances.get)
