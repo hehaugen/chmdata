@@ -260,9 +260,10 @@ class Agrimet(object):
                     self.end.day,
                 )
             )
-            r = requests.get(url, timeout=20)
-            txt = r.text.split("\n")
-            s_idx, e_idx = txt.index("BEGIN DATA"), txt.index("END DATA")
+            r = requests.get(url, timeout=20).text
+            s_idx = r.index("BEGIN DATA") + len("BEGIN DATA") + 2
+            e_idx = r.index("END DATA") - 1
+            content = r[s_idx:e_idx].split("\r\n")
 
         elif self.region in ("great_plains", "gpro"):
             url = (
@@ -277,16 +278,16 @@ class Agrimet(object):
                     self.end.day,
                 )
             )
-            r = requests.get(url, timeout=20)
-            txt = r.text.split("\r\n")
-            s_idx, e_idx = txt.index("BEGIN DATA"), txt.index("END DATA")
+            r = requests.get(url, timeout=20).text
+            s_idx = r.index("BEGIN DATA") + len("BEGIN DATA") + 2
+            e_idx = r.index("END DATA") - 1
+            content = r[s_idx:e_idx].split("\r\n")
 
         else:  # TODO: add error here?
             txt = None
             s_idx = None
             e_idx = None
 
-        content = txt[s_idx + 1 : e_idx]
         names = [c.strip() for c in content[0].split(",")]
         data = {name: [x.split(",")[i].strip() for x in content[1:]] for i, name in enumerate(names)}
         df = pd.DataFrame(data)
@@ -502,12 +503,14 @@ class Agrimet(object):
                     pass
 
 
-def load_stations(fix: bool = True) -> dict:
+def load_stations(fix: bool = True, mt: bool = False) -> dict:
     """Load metadata from USBR PNW region website.
 
     Args:
         fix: bool, optional; as of 08/14/2024, many GP region stations do not have install dates listed, so if
           fix=True, these dates are manually added.
+        mt: bool, optional; default mt=False returns all AgriMet stations, if mt=True, filter and return only
+          stations in Montana.
 
     Returns:
         stations: metadata dictionary.
@@ -568,6 +571,9 @@ def load_stations(fix: bool = True) -> dict:
         ]
         for stn in range(21):
             stations[gp_stns[stn]]["properties"]["install"] = gp_installs[stn]
+
+    if mt:
+        stations = {k: stations[k] for k in MT_STATIONS}
 
     return stations
 
