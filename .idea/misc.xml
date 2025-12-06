@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Black">
+    <option name="cmdArguments" value="--line-length 120" />
+    <option name="enabledOnReformat" value="true" />
+    <option name="executionMode" value="BINARY" />
+    <option name="pathToExecutable" value="C:\Users\CND571\.conda\envs\tools\Scripts\black.exe" />
     <option name="sdkName" value="mihm_2" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="chmdata" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="mihm_2" project-jdk-type="Python SDK" />
 </project>
