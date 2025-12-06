@@ -80,7 +80,7 @@ def penman(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     -------
     pandas.Series containing the calculated evaporation
 
-    Examples
+    examples
     --------
     >>> et_penman = penman(tmean, wind, rn=rn, rh=rh)
 
@@ -194,7 +194,7 @@ def pm_asce(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     -------
     pandas.Series containing the calculated evaporation
 
-    Examples
+    examples
     --------
     >>> et_pm = pm_asce(tmean, wind, rn=rn, rh=rh)
 
@@ -314,7 +314,7 @@ def pm(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None, rhmax=None,
     -------
     pandas.Series containing the calculated evaporation
 
-    Examples
+    examples
     --------
     >>> et_pm = pm(tmean, wind, rn=rn, rh=rh)
 
@@ -414,7 +414,7 @@ def pm_fao56(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     -------
         pandas.Series containing the calculated evaporation
 
-    Examples
+    examples
     --------
     >>> et_fao56 = pm_fao56(tmean, wind, rn=rn, rh=rh)
 
@@ -500,7 +500,7 @@ def priestley_taylor(tmean, wind, rs=None, rn=None, g=0, tmax=None, tmin=None,
     -------
         pandas.Series containing the calculated evaporation
 
-    Examples
+    examples
     --------
     >>> pt = priestley_taylor(tmean, wind, rn=rn, rh=rh)
 
@@ -779,7 +779,7 @@ def calc_psy(pressure, tmean=None):
     -------
         pandas.Series containing the Psychrometric constant [kPa °C-1].
 
-    Examples
+    examples
     --------
     >>> psy = calc_psy(pressure, tmean)
 
@@ -817,7 +817,7 @@ def calc_vpc(tmean):
         pandas.Series containing the calculated Saturation vapour pressure
         [kPa °C-1].
 
-    Examples
+    examples
     --------
     # >>> vpc = calc_vpc(tmean)
 
@@ -842,7 +842,7 @@ def calc_lambda(tmean):
     pandas.Series containing the calculated Latent Heat of Vaporization
         [MJ kg-1].
 
-    Examples
+    examples
     --------
     >>> lambd = calc_lambda(tmean)
 
@@ -865,7 +865,7 @@ def calc_press(elevation):
     -------
     pandas.Series containing the calculated atmospheric pressure [kPa].
 
-    Examples
+    examples
     --------
     >>> pressure = calc_press(elevation)
 
@@ -892,7 +892,7 @@ def calc_rho(pressure, tmean, ea):
     -------
     pandas.Series containing the calculated mean air density
 
-    Examples
+    examples
     --------
     >>> rho = calc_rho(pressure, tmean, ea)
 
@@ -919,7 +919,7 @@ def calc_e0(tmean):
     pandas.Series containing the calculated saturation vapor pressure at the
         air temperature tmean [kPa].
 
-    Examples
+    examples
     --------
     >>> e0 = calc_e0(tmean)
 
@@ -946,7 +946,7 @@ def calc_es(tmean=None, tmax=None, tmin=None):
     -------
     pandas.Series containing the calculated saturation vapor pressure [kPa].
 
-    Examples
+    examples
     --------
     # >>> es = calc_es(tmean)
 
@@ -984,7 +984,7 @@ def calc_ea(tmean=None, tmax=None, tmin=None, rhmax=None, rhmin=None, rh=None):
     -------
     pandas.Series containing the calculated actual vapor pressure [kPa].
 
-    Examples
+    examples
     --------
     >>> ea = calc_ea(tmean, rh)
 
