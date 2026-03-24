@@ -31,7 +31,6 @@ def elevation_from_coordinate(lat: float, lon: float) -> float:
     return elev
 
 
-# TODO: Get great_cricle_distance() working here, not redeclared in agrimet and mesonet modules.
 def great_circle_distance(here: Tuple[float, float], there: Tuple[float, float]) -> float:
     """Calculate great circle distance between 2 points in km.
 
