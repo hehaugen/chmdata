@@ -20,13 +20,11 @@ Hannah Haugen, hannah.haugen@mt.gov, 08/14/2024
 from datetime import date
 import json
 
-# import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 
 from chmdata.met_utils import great_circle_distance
 
-# TODO: update constants?
 # Available variables from the observations endpoints.
 # Generic values like 'soil temp' will fetch soil temp at all available levels.
 # Valid generic values are towards the end of this list.
@@ -288,8 +286,7 @@ class Mesonet:
     def closest_station(self) -> float:
         """Determines which Mesonet station is the closest given a set of coordinates.
 
-        Should this set the name and return the distance, or set the distance and return the name?
-        Do both/either work?
+        Sets self.station, returns great circle distance to that station in km.
 
         Returns:
             distances[k]: distance to closest station in km
@@ -533,7 +530,7 @@ class Mesonet:
 
     def asce_ref_et(self):
         """Calculate ASCE alfalfa reference ET, including downloading required variables if missing."""
-        # TODO: write this equation
+        # TODO: write this function
         return self.data
 
     def save_data(self, save_loc: str) -> None:
@@ -577,52 +574,5 @@ def stns_metadata(active: bool = True) -> dict:
         stns_dict[temp] = stn
 
     return stns_dict
-
-
-if __name__ == "__main__":
-    # How to deal with inactive stations? I'm just ignoring them for now.
-
-    # print(mesonet_find_closest_stn(46.5889579, -112.0152353))
-    thing = Mesonet(lat=46.5889579, lon=-112.0152353)  # WRD building in Helena, MT
-    # print(Mesonet(lat=46.5889579, lon=-112.0152353))
-    print()
-    print(thing.station)
-
-    # one = Mesonet(stn_id='acecrowa')
-    # one.get_data(elems=['air_temp', 'wind_dir'], der_elems=['etr', 'feels_like'],
-    #              start='2023-05-01', end='2023-05-06', time_step='hourly')
-    # print(one.data)
-    # print(one.data.columns)
-    # print()
-
-    # metadata = stns_metadata(False)  # No install date for inactive stations... :(
-    # print(metadata['aceabsar'])
-    # installs = pd.DataFrame(index=metadata.keys(), columns=['Install Date'])
-    # for key, val in metadata.items():
-    #     installs.loc[key] = val['date_installed']
-    # installs['Install Date'] = pd.to_datetime(installs['Install Date'])
-    # # print(installs)
-    # print(len(installs[installs['Install Date'].dt.strftime('%Y') < '2021']))
-    # # No, none of the ones installed in 2021 are early enough in the year to count for a full growing season.
-    #
-    # years = pd.date_range('2016-01-01', '2025-01-01', freq='YS')
-
-    # plt.figure(figsize=(12, 5))
-    # plt.suptitle('Mesonet Station Period of Record Summary')
-    #
-    # plt.subplot(121)
-    # plt.xlabel('year of install')
-    # plt.ylabel('number of stations')
-    # plt.grid(axis='y', zorder=1)
-    # plt.hist(installs['Install Date'], bins=years, rwidth=0.9, align='left', zorder=3)
-    #
-    # plt.subplot(122)
-    # plt.xlabel('year')
-    # plt.ylabel('fraction of stations with data')
-    # plt.grid(axis='y', zorder=1)
-    # plt.hist(installs['Install Date'], bins=years, rwidth=0.9, align='left', zorder=3, cumulative=True, density=True)
-    #
-    # plt.tight_layout()
-    # plt.show()
 
 # ========================= EOF ====================================================================

@@ -23,7 +23,6 @@ import pprint
 
 from fiona import collection  # only needed for write_agrimet_sation_shp
 from fiona.crs import from_epsg  # only needed for write_agrimet_sation_shp
-import matplotlib.pyplot as plt
 import pandas as pd
 import requests
 from requests.compat import urlencode, OrderedDict
@@ -283,10 +282,8 @@ class Agrimet(object):
             e_idx = r.index("END DATA") - 1
             content = r[s_idx:e_idx].split("\r\n")
 
-        else:  # TODO: add error here?
-            txt = None
-            s_idx = None
-            e_idx = None
+        else:
+            raise ValueError('Invalid region')
 
         names = [c.strip() for c in content[0].split(",")]
         data = {name: [x.split(",")[i].strip() for x in content[1:]] for i, name in enumerate(names)}
@@ -343,9 +340,8 @@ class Agrimet(object):
         elif self.region == "gp":
             raw_df, start_str = self._get_gp_crop()
 
-        else:  # TODO: add error here?
-            start_str = None
-            raw_df = None
+        else:
+            raise ValueError('Invalid region')
 
         et_summary_start = dt.datetime.strptime(f"{self.start.year}{start_str}", "%Y%m%d")
         raw_df.index = pd.date_range(et_summary_start, periods=raw_df.shape[0])
@@ -576,80 +572,5 @@ def load_stations(fix: bool = True, mt: bool = False) -> dict:
         stations = {k: stations[k] for k in MT_STATIONS}
 
     return stations
-
-
-if __name__ == "__main__":
-    # Finding average length of period of record for Montana Agrimet stations
-    # all_stns = load_stations()
-
-    thing = Agrimet(lat=46.5889579, lon=-112.0152353)  # WRD building in Helena, MT
-    # print(Mesonet(lat=46.5889579, lon=-112.0152353))
-    print()
-    print(thing.station)
-
-    # installs = pd.DataFrame()
-    # i = 0
-    # for key in all_stns.keys():
-    #     install = all_stns[key]['properties']['install']
-    #     if (len(install) > 0) and (all_stns[key]['properties']['state'] == 'MT'):
-    #         installs.at[i, 'ID'] = key
-    #         installs.at[i, 'Install'] = dt.datetime.strptime(install, '%m/%d/%Y')
-    #         installs.at[i, 'POR'] = dt.date.today() - installs.at[i, 'Install'].date()
-    #         i += 1
-    # print(i)
-    # print(installs)
-    # print(installs['POR'].mean())
-    # print(7963 / 365)  # 22 years on 8/19/24
-    #
-    # years = pd.date_range('1984-01-01', '2025-01-01', freq='YS')
-    #
-    # plt.figure(figsize=(12, 5))
-    # plt.suptitle('Agrimet Station Period of Record Summary')
-    #
-    # plt.subplot(121)
-    # plt.xlabel('year of install')
-    # plt.ylabel('number of stations')
-    # plt.grid(axis='y', zorder=1)
-    # plt.hist(installs['Install'], bins=years, rwidth=0.9, align='left', zorder=3)
-    #
-    # plt.subplot(122)
-    # plt.xlabel('year')
-    # plt.ylabel('fraction of stations with data')
-    # plt.grid(axis='y', zorder=1)
-    # plt.hist(installs['Install'], bins=years, rwidth=0.9, align='left', zorder=3, cumulative=True, density=True)
-    #
-    # plt.tight_layout()
-    # plt.show()
-    #
-    # # Both Agrimet and Mesonet
-    #
-    # # prepping mesonet
-    # from mesonet import stns_metadata
-    # metadata = stns_metadata(False)  # No install date for inactive stations... :(
-    # installs_mn = pd.DataFrame(index=metadata.keys(), columns=['Install Date'])
-    # for key, val in metadata.items():
-    #     installs_mn.loc[key] = val['date_installed']
-    # installs_mn['Install Date'] = pd.to_datetime(installs_mn['Install Date'])
-    #
-    # # plotting
-    # plt.figure(figsize=(12, 5))
-    # plt.suptitle('Weather Station Period of Record Summary')
-    #
-    # plt.subplot(121)
-    # plt.xlabel('year of install')
-    # plt.ylabel('number of stations')
-    # plt.grid(axis='y', zorder=1)
-    # plt.hist([installs['Install'], installs_mn['Install Date']], bins=years,
-    #          rwidth=0.9, align='left', zorder=3, stacked=True)
-    # plt.legend(['Agrimet', 'Mesonet'])
-    #
-    # plt.subplot(122)
-    # plt.xlabel('year')
-    # plt.ylabel('fraction of stations with data')
-    # plt.grid(axis='y', zorder=1)
-    # plt.hist([installs['Install'], installs_mn['Install Date']], bins=years, rwidth=0.9, align='left', zorder=3,
-    #          cumulative=True, stacked=True)
-    # plt.tight_layout()
-    # plt.show()
 
 # ========================= EOF ====================================================================
