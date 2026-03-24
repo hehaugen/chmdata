@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "chmdata"
-version = "0.0.2"
+version = "0.1.0"
 description = "A collection of climate and hydrology data loading utilities."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -27,9 +27,6 @@ classifiers = [
   "Intended Audience :: Water Scientists",
   "Topic :: Data Acquisition :: Water and Weather Data",
 
-  # Pick your license as you wish
-  "License :: OSI Approved :: Apache Software License",
-
   # Specify the Python versions you support here. In particular, ensure
   # that you indicate you support Python 3. These classifiers are *not*
   # checked by "pip install". See instead "requires-python" key in this file.
@@ -48,7 +45,7 @@ dependencies = [
     "pandas",
     "xarray",
     "requests",
-    "geopandas"
+    "geopy"
 ]
 [project.urls]
 "Homepage" = "https://github.com/MTDNRC-WRD/chmdata"
