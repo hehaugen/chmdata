@@ -1,4 +1,5 @@
-""" This module was adapted from https://github.com/phydrus/pyet """
+"""This module was adapted from https://github.com/phydrus/pyet"""
+
 # Only great_circle_distance is used right now.
 # I don't think any of these functions are used in the other modules yet, but they seemed useful.
 
@@ -30,7 +31,6 @@ def elevation_from_coordinate(lat: float, lon: float) -> float:
     return elev
 
 
-# TODO: Get great_cricle_distance() working here, not redeclared in agrimet and mesonet modules.
 def great_circle_distance(here: Tuple[float, float], there: Tuple[float, float]) -> float:
     """Calculate great circle distance between 2 points in km.
 
@@ -464,6 +464,7 @@ def pm_fao56(
     a=1.35,
     b=-0.35,
     albedo=0.23,
+    ref="grass",
 ):
     """Evaporation calculated according to [allen_1998]_.
 
@@ -509,6 +510,10 @@ def pm_fao56(
             empirical coefficient for Net Long-Wave radiation [-]
         albedo: float, optional
             surface albedo [-]
+        ref: str, optional
+            determines whether to use coefficients for grass or alfalfa reference crop,
+            producing eto or etf, respectively. Accepts: ['grass', 'eto', 'alfalfa', 'etr'] (case insensitive).
+            With unrecognized value, prints notice and defaults to grass reference crop.
 
     Returns:
         pandas.Series containing the calculated evaporation
@@ -523,17 +528,37 @@ def pm_fao56(
     gamma = calc_psy(pressure)
     dlt = calc_vpc(tmean)
 
-    gamma1 = gamma * (1 + 0.34 * wind)
+    # See ASCE-EWRI Task Committee Report, January, 2005
+    ref = ref.lower()
+    if ref == "grass" or ref == "eto":
+        cn = 900
+        cd = 0.34
+    elif ref == "alfalfa" or ref == "etr":
+        cn = 1600
+        cd = 0.38
+    else:
+        print("Unknown value for 'ref' variable, defaulting to grass")
+        cn = 900
+        cd = 0.34
 
-    ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
-    es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
+    gamma1 = gamma * (1 + cd * wind)
+
+    if (rhmax is None) and (rhmin is None) and (rh is None):
+        # from https://github.com/MTDNRC-WRD/pydlem/blob/main/prep/metdata.py#L194
+        etmin = 0.6108 * np.exp((17.27 * tmin) / (tmin + 237.3))
+        etmax = 0.6108 * np.exp((17.27 * tmax) / (tmax + 237.3))
+        es = (etmax + etmin) / 2.0
+        ea = etmin
+    else:
+        ea = calc_ea(tmean=tmean, tmax=tmax, tmin=tmin, rhmax=rhmax, rhmin=rhmin, rh=rh)
+        es = calc_es(tmean=tmean, tmax=tmax, tmin=tmin)
 
     if rn is None:
         rn = get_rn(tmean, rs, lat, n, nn, tmax, tmin, rhmax, rhmin, rh, elevation, rso, a, b, ea, albedo)
 
     den = dlt + gamma1
     num1 = (0.408 * dlt * (rn - g)) / den
-    num2 = (gamma * (es - ea) * 900 * wind / (tmean + 273)) / den
+    num2 = (gamma * (es - ea) * cn * wind / (tmean + 273)) / den
     return num1 + num2
 
 

@@ -42,7 +42,7 @@ from urllib.parse import urlunparse
 # Addition - imports from typing
 from typing import Union, Optional
 
-from numpy import empty, float32, datetime64, timedelta64, argmin, abs, array
+import numpy as np
 from rasterio import open as rasopen
 # Addition - for type hints
 from rasterio.coords import BoundingBox
@@ -53,11 +53,97 @@ from rasterio.warp import reproject, Resampling
 from rasterio.warp import calculate_default_transform as cdt
 from xarray import open_dataset
 from xarray import Dataset
-from pandas import date_range, DataFrame
+import pandas as pd
 
 warnings.simplefilter(action="ignore", category=DeprecationWarning)
 
 
+class BBox(object):
+    # Addition - Added type hints and docstring
+    """Bounding box used to subset requested data.
+
+    Attributes:
+        west:
+            The western (left) limit of the bounding box
+        east:
+            The eastern (right) limit of the bounding box
+        north:
+            The northern (top) limit of the bounding box
+        south:
+            The southern (bottom) limit of the bounding box
+    """
+
+    def __init__(self, west: float, east: float, north: float, south: float):
+        self.west = west
+        self.east = east
+        self.north = north
+        self.south = south
+        # Addition - added docstring
+        """Initializes the instance based on bound values.
+
+        Arguments:
+            west:
+                Float used for west bound of instance.
+            east:
+                Float used for east bound of instance.
+            north:
+                Float used for north bound of instance.
+            south:
+                Float used for south bound of instance.
+        """
+
+    # Addition - method to return as tuple so this is a compatible input for Thredds Parent class
+    def as_tuple(self):
+        """Returns a tuple of the BBox bounds in order WSEN"""
+        tup = self.west, self.south, self.east, self.north
+
+        return tup
+
+    # Addition - Static method to initialize instance from list, array, pandas DataFrame, or rasterio BoundingBox
+    @staticmethod
+    def import_bounds(bnds: Union[list, np.ndarray, pd.DataFrame, BoundingBox]):
+        """Function to initilize a BBox instance from other source.
+
+        This function is meant to streamline the creation of a BBox instance from other common representations of
+        spatial bounds including a list, array, pandas DataFrame (returned from GeoPandas bounds method), or
+        rasterio BoundingBox.
+
+        Args:
+            bnds:
+                The geospatial bounds to create a BBox bounding instance.
+
+                If input is list or np.ndarry, the order of the bounds is interpreted as:
+                 - [x_min, y_min, x_max, y_max] or [west, south, east, north]
+
+                If input is a pd.DataFrame, this is meant to process direct output from GeoPandas.GeoDataFrame.bounds
+                attribute. If a custom dataframe is created it must mirror this output format, must contain columns:
+                 - minx
+                 - miny
+                 - maxx
+                 - maxy
+                Also, if there is more than one row in the DataFrame, the total bounds will be used, (e.g.,the
+                minimum of the 'minx' column will be used as 'west', and so on).
+
+        Returns:
+            An instance of this class.
+
+        """
+        if isinstance(bnds, (list, np.ndarray)):
+            box = BBox(bnds[0], bnds[2], bnds[3], bnds[1])
+        elif isinstance(bnds, pd.DataFrame):
+            box = BBox(bnds["minx"].min(), bnds["maxx"].max(), bnds["maxy"].max(), bnds["miny"].min())
+        elif isinstance(bnds, BoundingBox):
+            box = BBox(bnds.left, bnds.right, bnds.top, bnds.bottom)
+        else:
+            raise ValueError(
+                "The input bounds are of an unrecognized type, must be list, numpy array, rasterio"
+                "BoundingBox, or pandas DataFrame."
+            )
+
+        return box
+
+
+# TODO: address missing(?) attributes in Thredds
 class Thredds:
     # Addition - Edited class docstring
     """  Unidata's Thematic Real-time Environmental Distributed Data Services (THREDDS)
@@ -96,14 +182,14 @@ class Thredds:
 
     # Addition - added type hints
     def __init__(self,
-                 start: Optional[datetime],
-                 end: Optional[datetime],
-                 date: Optional[datetime],
-                 bounds: Optional[BBox],
-                 target_profile: Optional[dict],
-                 lat: Optional[float],
-                 lon: Optional[float],
-                 clip_feature: Optional[dict]):
+                 start: Optional[datetime] = None,
+                 end: Optional[datetime] = None,
+                 date: Optional[datetime] = None,
+                 bounds: Optional[BBox] = None,
+                 target_profile: Optional[dict] = None,
+                 lat: Optional[float] = None,
+                 lon: Optional[float] = None,
+                 clip_feature: Optional[dict] = None):
         # Addition - added docstring
         """Initializes the instance based on optional inputs
 
@@ -141,7 +227,9 @@ class Thredds:
         self.clip_feature = clip_feature
         self._is_masked = False
 
-    def conform(self, subset: np.ndarray, out_file: Optional[str]) -> np.ndarray:
+    def conform(self,
+                subset: np.ndarray,
+                out_file: Optional[str] = None) -> np.ndarray:
         # Addition - added docstring
         """Conforms raster dataset to target raster dataset and clip feature.
 
@@ -154,8 +242,8 @@ class Thredds:
         Returns:
             The conformed (reprojected, clipped, and resampled raster data array).
         """
-        if subset.dtype != float32:
-            subset = array(subset, dtype=float32)
+        if subset.dtype != np.float32:
+            subset = np.array(subset, dtype=np.float32)
         self._project(subset)
         self._warp()
         self._mask()
@@ -170,7 +258,7 @@ class Thredds:
         setattr(self, "projection", proj_path)
 
         profile = copy.deepcopy(self.target_profile)
-        profile["dtype"] = float32
+        profile["dtype"] = np.float32
         bb = self.bbox.as_tuple()
 
         if self.src_bounds_wsen:
@@ -210,7 +298,7 @@ class Thredds:
             src_array = src.read()
 
         dst_profile = copy.deepcopy(self.target_profile)
-        dst_profile["dtype"] = float32
+        dst_profile["dtype"] = np.float32
         bounds = src_bounds
         dst_affine, dst_width, dst_height = cdt(
             src_profile["crs"], dst_profile["crs"], src_profile["width"], src_profile["height"], *bounds
@@ -227,7 +315,7 @@ class Thredds:
         )
 
         with rasopen(reproj_path, "w", **dst_profile) as dst:
-            dst_array = empty((src_array.shape[0], dst_height, dst_width), dtype=float32)
+            dst_array = np.empty((src_array.shape[0], dst_height, dst_width), dtype=np.float32)
 
             reproject(
                 src_array,
@@ -288,9 +376,9 @@ class Thredds:
             target_res = target_affine.a
             res_coeff = res[0] / target_res
 
-            new_array = empty(
+            new_array = np.empty(
                 shape=(array.shape[0], round(array.shape[1] * res_coeff), round(array.shape[2] * res_coeff)),
-                dtype=float32,
+                dtype=np.float32,
             )
             aff = src.transform
             new_affine = Affine(aff.a / res_coeff, aff.b, aff.c, aff.d, aff.e / res_coeff, aff.f)
@@ -330,13 +418,13 @@ class Thredds:
             return arr
 
     def _date_index(self):
-        date_ind = date_range(self.start, self.end, freq="d")
+        date_ind = pd.date_range(self.start, self.end, freq="d")
 
         return date_ind
 
     @staticmethod
     def _dtime_to_dtime64(dtime):
-        dtnumpy = datetime64(dtime).astype(datetime64)
+        dtnumpy = np.datetime64(dtime).astype(np.datetime64)
         return dtnumpy
 
     @staticmethod
@@ -403,7 +491,7 @@ class TopoWX(Thredds):
                         var: str = 'tmax',
                         temp_units_out: str = 'C',
                         grid_conform: bool = False,
-                        out_file: Optional[str] = None) -> np.ndarray:
+                        out_file: Optional[str] = None) -> Optional[np.ndarray]:
         # Addition - Added docstring
         """Function to get a subset of TopoWX temperature data.
 
@@ -433,14 +521,14 @@ class TopoWX(Thredds):
         end = self._dtime_to_dtime64(self.end)
 
         if self.date:
-            end = end + timedelta64(1, "D")
+            end = end + np.timedelta64(1, "D")
 
         # find index and value of bounds
         # 1/100 degree adds a small buffer for this 800 m res data
-        north_ind = argmin(abs(xray.lat.values - (self.bbox.north + 1.0)))
-        south_ind = argmin(abs(xray.lat.values - (self.bbox.south - 1.0)))
-        west_ind = argmin(abs(xray.lon.values - (self.bbox.west - 1.0)))
-        east_ind = argmin(abs(xray.lon.values - (self.bbox.east + 1.0)))
+        north_ind = np.argmin(abs(xray.lat.values - (self.bbox.north + 1.0)))
+        south_ind = np.argmin(abs(xray.lat.values - (self.bbox.south - 1.0)))
+        west_ind = np.argmin(abs(xray.lon.values - (self.bbox.west - 1.0)))
+        east_ind = np.argmin(abs(xray.lon.values - (self.bbox.east + 1.0)))
 
         north_val = xray.lat.values[north_ind]
         south_val = xray.lat.values[south_ind]
@@ -529,14 +617,14 @@ class GridMet(Thredds):
     # Addition - Added type hints
     def __init__(self,
                  variable: Optional[str],
-                 date: Optional[Union[str, datetime]],
-                 start: Optional[Union[str, datetime]],
-                 end: Optional[Union[str, datetime]],
-                 bbox: Optional[BBox],
-                 target_profile: Optional[dict],
-                 clip_feature: Optional[dict],
-                 lat: Optional[float],
-                 lon: Optional[float]):
+                 date: Optional[Union[str, datetime]] = None,
+                 start: Optional[Union[str, datetime]] = None,
+                 end: Optional[Union[str, datetime]] = None,
+                 bbox: Optional[BBox] = None,
+                 target_profile: Optional[dict] = None,
+                 clip_feature: Optional[dict] = None,
+                 lat: Optional[float] = None,
+                 lon: Optional[float] = None):
         # Addition - added docstring
         """Initializes the instance based on user input.
 
@@ -685,10 +773,10 @@ class GridMet(Thredds):
         url = url + "#fillmismatch"
         xray = open_dataset(url, decode_times=True)
 
-        north_ind = argmin(abs(xray.lat.values - (self.bbox.north + 1.0)))
-        south_ind = argmin(abs(xray.lat.values - (self.bbox.south - 1.0)))
-        west_ind = argmin(abs(xray.lon.values - (self.bbox.west - 1.0)))
-        east_ind = argmin(abs(xray.lon.values - (self.bbox.east + 1.0)))
+        north_ind = np.argmin(abs(xray.lat.values - (self.bbox.north + 1.0)))
+        south_ind = np.argmin(abs(xray.lat.values - (self.bbox.south - 1.0)))
+        west_ind = np.argmin(abs(xray.lon.values - (self.bbox.west - 1.0)))
+        east_ind = np.argmin(abs(xray.lon.values - (self.bbox.east + 1.0)))
 
         north_val = xray.lat.values[north_ind]
         south_val = xray.lat.values[south_ind]
@@ -741,10 +829,10 @@ class GridMet(Thredds):
         url = url + "#fillmismatch"
         xray = open_dataset(url)
 
-        north_ind = argmin(abs(xray.lat.values - self.bbox.north))
-        south_ind = argmin(abs(xray.lat.values - self.bbox.south))
-        west_ind = argmin(abs(xray.lon.values - self.bbox.west))
-        east_ind = argmin(abs(xray.lon.values - self.bbox.east))
+        north_ind = np.argmin(abs(xray.lat.values - self.bbox.north))
+        south_ind = np.argmin(abs(xray.lat.values - self.bbox.south))
+        west_ind = np.argmin(abs(xray.lon.values - self.bbox.west))
+        east_ind = np.argmin(abs(xray.lon.values - self.bbox.east))
 
         north_val = xray.lat.values[north_ind]
         south_val = xray.lat.values[south_ind]
@@ -802,7 +890,7 @@ class GridMet(Thredds):
         subset["time"] = date_ind
         time = subset["time"].values
         series = subset[self.kwords[self.variable]].values
-        df = DataFrame(data=series, index=time)
+        df = pd.DataFrame(data=series, index=time)
         df.columns = [self.variable]
         return df
 
@@ -865,85 +953,4 @@ class GridMet(Thredds):
             subset = xray
         subset.to_netcdf(path=outputroot, engine="netcdf4")
 
-
-class BBox(object):
-    # Addition - Added type hints and docstring
-    """Bounding box used to subset requested data.
-
-    Attributes:
-        west:
-            The western (left) limit of the bounding box
-        east:
-            The eastern (right) limit of the bounding box
-        north:
-            The northern (top) limit of the bounding box
-        south:
-            The southern (bottom) limit of the bounding box
-    """
-
-    def __init__(self, west: float, east: float, north: float, south: float):
-        self.west = west
-        self.east = east
-        self.north = north
-        self.south = south
-        # Addition - added docstring
-        """Initializes the instance based on bound values.
-        
-        Arguments:
-            west:
-                Float used for west bound of instance.
-            east:
-                Float used for east bound of instance.
-            north:
-                Float used for north bound of instance.
-            south:
-                Float used for south bound of instance.
-        """
-    # Addition - method to return as tuple so this is a compatible input for Thredds Parent class
-    def as_tuple(self):
-        """Returns a tuple of the BBox bounds in order WSEN"""
-        tup = self.west, self.south, self.east, self.north
-
-        return tup
-
-    # Addition - Static method to initialize instance from list, array, pandas DataFrame, or rasterio BoundingBox
-    @staticmethod
-    def import_bounds(bnds: Union[list, np.ndarray, pd.DataFrame, BoundingBox]):
-        """Function to initilize a BBox instance from other source.
-
-        This function is meant to streamline the creation of a BBox instance from other common representations of
-        spatial bounds including a list, array, pandas DataFrame (returned from GeoPandas bounds method), or
-        rasterio BoundingBox.
-
-        Args:
-            bnds:
-                The geospatial bounds to create a BBox bounding instance.
-
-                If input is list or np.ndarry, the order of the bounds is interpreted as:
-                 - [x_min, y_min, x_max, y_max] or [west, south, east, north]
-
-                If input is a pd.DataFrame, this is meant to process direct output from GeoPandas.GeoDataFrame.bounds
-                attribute. If a custom dataframe is created it must mirror this output format, must contain columns:
-                 - minx
-                 - miny
-                 - maxx
-                 - maxy
-                Also, if there is more than one row in the DataFrame, the total bounds will be used, (e.g.,the
-                minimum of the 'minx' column will be used as 'west', and so on).
-
-        Returns:
-            An instance of this class.
-
-        """
-        if isinstance(bnds, [list, np.ndarray]):
-            box = BBox(bnds[0], bnds[2], bnds[3], bnds[1])
-        elif isinstance(bnds, pd.DataFrame):
-            box = BBox(bnds['minx'].min(), bnds['maxx'].max(), bnds['maxy'].max(), bnds['miny'].min())
-        elif isinstance(bnds, BoundingBox):
-            box = BBox(bnds.left, bnds.right, bnds.top, bnds.bottom)
-        else:
-            raise ValueError("The input bounds are of an unrecognized type, must be list, numpy array, rasterio"
-                             "BoundingBox, or pandas DataFrame.")
-
-        return box
 # ========================= EOF ====================================================================
